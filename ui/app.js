@@ -99,8 +99,8 @@ function drawNode(n, rootRect) {
   } else if (n.shape === 'RoundedBox') {
     el('rect', { x: r.cx - r.w / 2, y: r.cy - r.h / 2, width: r.w, height: r.h, rx: 14, fill: 'none',
       stroke: n.color, 'stroke-width': 3, 'pointer-events': 'none' }, g);
-  } else if (n.shape === 'Cloud' && n.cloud) {
-    el('path', { transform: `translate(${r.cx} ${r.cy})`, d: n.cloud, fill: 'none', stroke: n.color,
+  } else if ((n.shape === 'Cloud' || n.shape === 'Bubble') && n.shape_path) {
+    el('path', { transform: `translate(${r.cx} ${r.cy})`, d: n.shape_path, fill: 'none', stroke: n.color,
       'stroke-width': 3, 'pointer-events': 'none' }, g);
   }
   if (editing && editing.id === n.id) return; // the editor overlay shows the text
@@ -147,7 +147,9 @@ for (const c of PALETTE) {
   $('swatches').appendChild(i);
 }
 $('f-color').oninput = (e) => sel !== null && act('set_color', { id: sel, color: e.target.value });
-$('f-shape').onchange = (e) => sel !== null && act('set_shape', { id: sel, shape: e.target.value });
+for (const b of document.querySelectorAll('#shapes button')) {
+  b.onclick = () => sel !== null && act('set_shape', { id: sel, shape: b.dataset.shape });
+}
 $('f-bold').onclick = () => { const m = meta(sel); m && act('set_format', { id: sel, bold: !m.bold }); };
 $('f-italic').onclick = () => { const m = meta(sel); m && act('set_format', { id: sel, italic: !m.italic }); };
 $('f-smaller').onclick = () => { const m = meta(sel); m && act('set_format', { id: sel, font_size: m.font_size - 2 }); };
@@ -158,7 +160,7 @@ function updateFormatBar() {
   bar.hidden = sel === null || !!editing;
   if (bar.hidden) return;
   const m = meta(sel), n = nodeById(sel);
-  $('f-shape').value = m.shape;
+  for (const b of document.querySelectorAll('#shapes button')) b.classList.toggle('on', b.dataset.shape === m.shape);
   $('f-bold').classList.toggle('on', m.bold);
   $('f-italic').classList.toggle('on', m.italic);
   $('f-color').value = n.color;

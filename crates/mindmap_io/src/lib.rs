@@ -120,8 +120,8 @@ pub fn scene_to_svg(scene: &Scene) -> String {
                     r.left(), r.top(), r.w, r.h, n.color
                 );
             }
-            Shape::Cloud => {
-                if let Some(c) = &n.cloud {
+            Shape::Cloud | Shape::Bubble => {
+                if let Some(c) = &n.shape_path {
                     let _ = write!(
                         s,
                         "<path transform=\"translate({:.1} {:.1})\" d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"3\"/>",
@@ -129,7 +129,7 @@ pub fn scene_to_svg(scene: &Scene) -> String {
                     );
                 }
             }
-            Shape::Bubble | Shape::None => {}
+            Shape::None => {}
         }
         let lines: Vec<&str> = n.text.lines().collect();
         for (i, line) in lines.iter().enumerate() {

@@ -21,7 +21,7 @@ hand drawn marker frame whose stroke overshoots its start.
 ## Develop
 
 ```
-cargo test                                              # 25 tests
+cargo test                                              # 29 tests
 cargo run -p mindmap_api --example dev_server           # UI at http://127.0.0.1:5173
 cargo run -p mindmap_io --example sample -- out.svg     # render a sample map
 ```

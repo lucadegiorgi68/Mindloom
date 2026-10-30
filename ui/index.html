@@ -45,12 +45,13 @@
 <div id="formatbar" hidden>
   <div id="swatches"></div>
   <input type="color" id="f-color" title="Custom colour">
-  <select id="f-shape" title="Shape">
-    <option value="None">Text only</option>
-    <option value="RoundedBox">Box</option>
-    <option value="Cloud">Cloud</option>
-    <option value="Marker">Marker</option>
-  </select>
+  <div id="shapes" title="Shape">
+    <button data-shape="None" title="Text only"><svg viewBox="0 0 28 20"><path d="M3 15 H25" stroke-width="2.5"/><text x="14" y="12" text-anchor="middle" font-size="11" stroke="none">Aa</text></svg></button>
+    <button data-shape="RoundedBox" title="Box"><svg viewBox="0 0 28 20"><rect x="3" y="3" width="22" height="14" rx="5"/></svg></button>
+    <button data-shape="Cloud" title="Cloud"><svg viewBox="0 0 28 20"><path d="M7 16 C2 16 2 9 7 9 C7 3 15 2 17 7 C22 4 26 9 22 12 C26 15 22 17 19 16 Z"/></svg></button>
+    <button data-shape="Bubble" title="Speech bubble"><svg viewBox="0 0 28 20"><path d="M6 3 H22 A4 4 0 0 1 26 7 V10 A4 4 0 0 1 22 14 H11 L6 18 L7 14 H6 A4 4 0 0 1 2 10 V7 A4 4 0 0 1 6 3 Z"/></svg></button>
+    <button data-shape="Marker" title="Marker frame"><svg viewBox="0 0 28 20"><path d="M4 5 C10 2 18 3 24 4 C27 8 26 13 24 16 C17 18 10 17 4 16 C2 12 3 8 5 5 C8 3 12 4 15 4" stroke-width="3"/></svg></button>
+  </div>
   <button id="f-bold" title="Bold"><b>B</b></button>
   <button id="f-italic" title="Italic"><i>I</i></button>
   <button id="f-smaller" title="Smaller text">A-</button>

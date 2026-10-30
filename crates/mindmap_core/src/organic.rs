@@ -222,3 +222,18 @@ pub fn cloud_path(w: f32, h: f32, seed: u64) -> String {
     d.push('Z');
     d
 }
+
+/// Speech bubble: rounded rectangle with a small tail at the bottom left,
+/// as SVG path data relative to the node centre.
+pub fn bubble_path(w: f32, h: f32) -> String {
+    let (hw, hh) = (w / 2.0, h / 2.0);
+    let r = (hh.min(hw) * 0.45).clamp(8.0, 26.0);
+    let tail_x = -hw + r + 4.0;
+    format!(
+        "M{:.1} {:.1} H{:.1} A{r:.1} {r:.1} 0 0 1 {:.1} {:.1} V{:.1} A{r:.1} {r:.1} 0 0 1 {:.1} {:.1} \
+         H{:.1} L{:.1} {:.1} L{:.1} {:.1} H{:.1} A{r:.1} {r:.1} 0 0 1 {:.1} {:.1} V{:.1} A{r:.1} {r:.1} 0 0 1 {:.1} {:.1}Z",
+        -hw + r, -hh, hw - r, hw, -hh + r, hh - r, hw - r, hh,
+        tail_x + 30.0, tail_x - 8.0, hh + 18.0, tail_x + 4.0, hh, -hw + r,
+        -hw, hh - r, -hh + r, -hw + r, -hh
+    )
+}

@@ -22,8 +22,8 @@ pub struct SceneNode {
     pub frame: String,
     /// Baseline of the last text line, absolute y.
     pub text_baseline: f32,
-    /// SVG path data relative to the node centre (Cloud shape).
-    pub cloud: Option<String>,
+    /// SVG path data relative to the node centre (Cloud and Bubble shapes).
+    pub shape_path: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -92,10 +92,10 @@ pub fn build_scene(map: &MindMap) -> Scene {
                 let extra = (n.text.lines().count().max(1) as f32 - 1.0) * n.font_size * 1.25 / 2.0;
                 r.cy + n.font_size * 0.35 + extra
             },
-            cloud: if n.shape == Shape::Cloud {
-                Some(organic::cloud_path(r.w, r.h, seed))
-            } else {
-                None
+            shape_path: match n.shape {
+                Shape::Cloud => Some(organic::cloud_path(r.w, r.h, seed)),
+                Shape::Bubble => Some(organic::bubble_path(r.w, r.h)),
+                _ => None,
             },
         });
         if n.collapsed {

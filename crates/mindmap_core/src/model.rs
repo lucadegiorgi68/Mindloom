@@ -244,7 +244,29 @@ impl MindMap {
         n.parent = Some(new_parent);
         n.dx = 0.0;
         n.dy = 0.0;
+        // The moved branch adopts the colour of its new home. Under a main
+        // branch it simply inherits; directly under the central idea it
+        // becomes a main branch with the next free palette colour.
+        self.clear_colors(id);
+        if new_parent == self.root {
+            let slot = self.nodes[&new_parent].children.len() - 1;
+            self.nodes.get_mut(&id).unwrap().color =
+                Some(PALETTE[slot % PALETTE.len()].to_string());
+        }
         true
+    }
+
+    /// Removes explicit colours from a node and its whole subtree so they
+    /// inherit from the ancestor they now hang under.
+    fn clear_colors(&mut self, id: NodeId) {
+        let kids = {
+            let n = self.nodes.get_mut(&id).unwrap();
+            n.color = None;
+            n.children.clone()
+        };
+        for k in kids {
+            self.clear_colors(k);
+        }
     }
 
     fn set_side_recursive(&mut self, id: NodeId, side: Side) {

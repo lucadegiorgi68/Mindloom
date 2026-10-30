@@ -176,3 +176,55 @@ fn scene_json_roundtrips() {
     let back: Scene = serde_json::from_str(&j).unwrap();
     assert_eq!(back.nodes.len(), s.nodes.len());
 }
+
+#[test]
+fn reparented_branch_takes_target_branch_color() {
+    let mut m = MindMap::new("Root");
+    let a = m.add_child(1, "A").unwrap();
+    let b = m.add_child(1, "B").unwrap();
+    let a1 = m.add_child(a, "A1").unwrap();
+    let a1x = m.add_child(a1, "A1x").unwrap();
+    // A user colour deep in the moved subtree must not survive the move.
+    m.nodes.get_mut(&a1x).unwrap().color = Some("#123456".into());
+    let target = m.color_of(b);
+    assert_ne!(m.color_of(a1), target);
+    assert!(m.reparent(a1, b));
+    assert_eq!(m.color_of(a1), target);
+    assert_eq!(m.color_of(a1x), target);
+}
+
+#[test]
+fn main_branch_moved_under_another_takes_its_color() {
+    let mut m = MindMap::new("Root");
+    let a = m.add_child(1, "A").unwrap();
+    let b = m.add_child(1, "B").unwrap();
+    assert!(m.reparent(a, b));
+    assert_eq!(m.color_of(a), m.color_of(b));
+}
+
+#[test]
+fn branch_promoted_to_main_gets_its_own_palette_color() {
+    let mut m = MindMap::new("Root");
+    let a = m.add_child(1, "A").unwrap();
+    let a1 = m.add_child(a, "A1").unwrap();
+    assert!(m.reparent(a1, 1));
+    assert!(m.nodes[&a1].color.is_some());
+    assert_ne!(m.color_of(a1), m.color_of(a));
+}
+
+#[test]
+fn bubble_and_cloud_both_emit_a_shape_path() {
+    let mut m = MindMap::new("Root");
+    let a = m.add_child(1, "A").unwrap();
+    let b = m.add_child(1, "B").unwrap();
+    m.nodes.get_mut(&a).unwrap().shape = Shape::Cloud;
+    m.nodes.get_mut(&b).unwrap().shape = Shape::Bubble;
+    let s = build_scene(&m);
+    for id in [a, b] {
+        let n = s.nodes.iter().find(|n| n.id == id).unwrap();
+        assert!(n
+            .shape_path
+            .as_deref()
+            .is_some_and(|p| p.starts_with('M') && p.ends_with('Z')));
+    }
+}
