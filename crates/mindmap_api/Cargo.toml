@@ -1,0 +1,11 @@
+[package]
+name = "mindmap_api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mindmap_core = { path = "../mindmap_core" }
+mindmap_io = { path = "../mindmap_io" }
+serde.workspace = true
+serde_json.workspace = true

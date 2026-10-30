@@ -1,0 +1,48 @@
+:root {
+  --bg: #fbfcfe; --fg: #2d3138; --bar: #ffffff; --line: #dfe4ec; --accent: #1a8cff;
+  --muted: #7b8494; --shadow: 0 4px 16px rgba(30, 50, 90, 0.12);
+}
+body.dark {
+  --bg: #1c1f26; --fg: #eceff4; --bar: #262a33; --line: #3a404c; --accent: #4da3ff;
+  --muted: #9aa3b2; --shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+  font-family: "Open Sans", "Segoe UI", system-ui, sans-serif; overflow: hidden; }
+#toolbar { position: fixed; top: 10px; left: 10px; right: 10px; z-index: 5; display: flex;
+  gap: 8px; align-items: center; flex-wrap: wrap; pointer-events: none; }
+#toolbar > * { pointer-events: auto; }
+.group { display: flex; gap: 2px; padding: 4px; background: var(--bar); border: 1px solid var(--line);
+  border-radius: 12px; box-shadow: var(--shadow); }
+button, select { font: inherit; font-size: 13px; color: var(--fg); background: transparent; border: 0;
+  border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+select { background: transparent; }
+select option { color: #222; }
+button:hover:not(:disabled), select:hover { background: rgba(26, 140, 255, 0.12); }
+button:disabled { opacity: 0.35; cursor: default; }
+button.on { background: rgba(26, 140, 255, 0.2); color: var(--accent); }
+#title { margin-left: auto; color: var(--muted); font-size: 13px; padding-right: 6px; }
+#canvas { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+#canvas.panning { cursor: grabbing; }
+#world text { fill: var(--fg); user-select: none; pointer-events: none; }
+.hit { fill: transparent; cursor: pointer; }
+.sel { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 5 4; pointer-events: none; }
+.plus circle { fill: #7bd44a; stroke: #fff; stroke-width: 2; cursor: pointer; }
+.plus text { fill: #fff !important; font-weight: 700; pointer-events: none; }
+.fold circle { fill: var(--bar); stroke: var(--accent); stroke-width: 1.5; }
+.fold text { fill: var(--accent) !important; font-size: 12px; }
+#formatbar { position: fixed; bottom: 46px; left: 50%; transform: translateX(-50%); z-index: 5; display: flex;
+  gap: 4px; align-items: center; padding: 6px 8px; background: var(--bar); border: 1px solid var(--line);
+  border-radius: 14px; box-shadow: var(--shadow); }
+#swatches { display: flex; gap: 4px; padding-right: 6px; }
+#swatches i { width: 20px; height: 20px; border-radius: 50%; cursor: pointer; border: 2px solid var(--bar);
+  outline: 1px solid var(--line); }
+#swatches i:hover { transform: scale(1.15); }
+#f-color { width: 30px; height: 28px; padding: 0; border: 0; background: none; cursor: pointer; }
+#editor { position: fixed; z-index: 8; resize: none; border: 2px solid var(--accent); border-radius: 10px;
+  background: var(--bar); color: var(--fg); font-family: inherit; text-align: center; outline: none;
+  padding: 2px 6px; overflow: hidden; box-shadow: var(--shadow); }
+#toast { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); background: #c0392b; color: #fff;
+  padding: 8px 14px; border-radius: 10px; z-index: 9; font-size: 13px; box-shadow: var(--shadow); }
+#help { position: fixed; bottom: 12px; left: 0; right: 0; text-align: center; font-size: 12px; color: var(--muted);
+  pointer-events: none; }

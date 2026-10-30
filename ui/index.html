@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mindloom</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header id="toolbar">
+  <div class="group">
+    <button id="b-new" title="New map (Ctrl+N)">New</button>
+    <button id="b-open" title="Open (Ctrl+O)">Open</button>
+    <button id="b-save" title="Save (Ctrl+S)">Save</button>
+  </div>
+  <div class="group">
+    <button id="b-undo" title="Undo (Ctrl+Z)">Undo</button>
+    <button id="b-redo" title="Redo (Ctrl+Y)">Redo</button>
+  </div>
+  <div class="group">
+    <button id="b-child" title="Add child (Tab)">Add branch</button>
+    <button id="b-sibling" title="Add sibling (Enter)">Add sibling</button>
+    <button id="b-delete" title="Delete (Delete)">Delete</button>
+    <button id="b-fold" title="Collapse or expand (Space)">Fold</button>
+  </div>
+  <div class="group">
+    <button id="b-clean" title="Remove manual moves, restore automatic layout">Clean up</button>
+    <button id="b-fit" title="Fit map to window (Ctrl+0)">Fit</button>
+    <button id="b-dark" title="Toggle dark mode">Dark</button>
+  </div>
+  <div class="group">
+    <select id="b-export" title="Export">
+      <option value="">Export...</option>
+      <option value="svg">SVG image</option>
+      <option value="markdown">Markdown outline</option>
+      <option value="opml">OPML outline</option>
+    </select>
+    <button id="b-import" title="Import an OPML outline">Import OPML</button>
+  </div>
+  <span id="title"></span>
+</header>
+
+<svg id="canvas" xmlns="http://www.w3.org/2000/svg"><g id="world"></g></svg>
+
+<div id="formatbar" hidden>
+  <div id="swatches"></div>
+  <input type="color" id="f-color" title="Custom colour">
+  <select id="f-shape" title="Shape">
+    <option value="None">Text only</option>
+    <option value="RoundedBox">Box</option>
+    <option value="Cloud">Cloud</option>
+    <option value="Marker">Marker</option>
+  </select>
+  <button id="f-bold" title="Bold"><b>B</b></button>
+  <button id="f-italic" title="Italic"><i>I</i></button>
+  <button id="f-smaller" title="Smaller text">A-</button>
+  <button id="f-bigger" title="Larger text">A+</button>
+</div>
+
+<textarea id="editor" hidden rows="1" spellcheck="false"></textarea>
+<div id="toast" hidden></div>
+<input type="file" id="file-input" hidden>
+<div id="help">Tab: add branch &nbsp; Enter: sibling &nbsp; F2 or double click: edit &nbsp; Drag: move &nbsp; Shift+drop on a node: re-parent &nbsp; Wheel: zoom &nbsp; Drag background: pan</div>
+<script src="app.js"></script>
+</body>
+</html>
