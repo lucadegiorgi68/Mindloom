@@ -106,3 +106,90 @@ fn font_changes_are_validated_and_listed() {
         "Open Sans"
     );
 }
+
+#[test]
+fn link_commands_create_edit_delete_and_undo() {
+    let mut s = Session::new("Root");
+    let a = s
+        .invoke("add_child", &json!({"parent": 1, "text": "A"}))
+        .unwrap()["new_id"]
+        .as_u64()
+        .unwrap();
+    let b = s
+        .invoke("add_child", &json!({"parent": 1, "text": "B"}))
+        .unwrap()["new_id"]
+        .as_u64()
+        .unwrap();
+    let st = s.invoke("add_link", &json!({"from": a, "to": b})).unwrap();
+    let lid = st["new_link"].as_u64().unwrap();
+    assert_eq!(st["scene"]["links"].as_array().unwrap().len(), 1);
+    assert_eq!(st["scene"]["links"][0]["arrow"], "End");
+    let st = s
+        .invoke(
+            "set_link",
+            &json!({"id": lid, "style": "Dashed", "arrow": "Both", "color": "#00aa55"}),
+        )
+        .unwrap();
+    let l = &st["scene"]["links"][0];
+    assert_eq!(
+        (l["style"].clone(), l["arrow"].clone(), l["color"].clone()),
+        (json!("Dashed"), json!("Both"), json!("#00aa55"))
+    );
+    assert_eq!(l["arrow_start"].as_array().unwrap().len(), 4);
+    // Partial updates leave the other fields alone.
+    let st = s
+        .invoke("set_link", &json!({"id": lid, "arrow": "None"}))
+        .unwrap();
+    assert_eq!(st["scene"]["links"][0]["style"], "Dashed");
+    s.invoke("undo", &json!({})).unwrap();
+    assert_eq!(
+        s.invoke("state", &json!({})).unwrap()["scene"]["links"][0]["arrow"],
+        "Both"
+    );
+    let st = s.invoke("delete_link", &json!({"id": lid})).unwrap();
+    assert!(st["scene"]["links"].as_array().unwrap().is_empty());
+    s.invoke("undo", &json!({})).unwrap();
+    assert_eq!(
+        s.invoke("state", &json!({})).unwrap()["scene"]["links"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn bad_link_commands_are_errors_and_leave_no_history() {
+    let mut s = Session::new("Root");
+    let a = s
+        .invoke("add_child", &json!({"parent": 1, "text": "A"}))
+        .unwrap()["new_id"]
+        .as_u64()
+        .unwrap();
+    assert!(s.invoke("add_link", &json!({"from": a, "to": a})).is_err());
+    assert!(s.invoke("add_link", &json!({"from": a, "to": 99})).is_err());
+    assert!(s.invoke("add_link", &json!({"from": a})).is_err());
+    let lid = s.invoke("add_link", &json!({"from": a, "to": 1})).unwrap()["new_link"]
+        .as_u64()
+        .unwrap();
+    assert!(s.invoke("add_link", &json!({"from": a, "to": 1})).is_err());
+    assert!(s
+        .invoke("set_link", &json!({"id": lid, "style": "Wavy"}))
+        .is_err());
+    assert!(s
+        .invoke("set_link", &json!({"id": lid, "arrow": "Sideways"}))
+        .is_err());
+    assert!(s
+        .invoke("set_link", &json!({"id": lid, "color": "blue"}))
+        .is_err());
+    assert!(s
+        .invoke("set_link", &json!({"id": 4242, "style": "Solid"}))
+        .is_err());
+    assert!(s.invoke("delete_link", &json!({"id": 4242})).is_err());
+    // Still just the one link, still undoable back to zero in one step.
+    s.invoke("undo", &json!({})).unwrap();
+    assert!(s.invoke("state", &json!({})).unwrap()["scene"]["links"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+}

@@ -2,7 +2,8 @@
 //! The frontend (or the SVG exporter) only draws it.
 use crate::geom::{Pt, Rect};
 use crate::layout::layout;
-use crate::model::{BranchStyle, MindMap, NodeId, Shape, Side};
+use crate::links::link_geometry;
+use crate::model::{BranchStyle, LinkArrow, LinkStyle, MindMap, NodeId, Shape, Side, LINK_GREY};
 use crate::organic;
 use serde::{Deserialize, Serialize};
 
@@ -41,9 +42,26 @@ pub struct SceneBranch {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SceneLink {
+    pub id: u64,
+    pub from: NodeId,
+    pub to: NodeId,
+    pub style: LinkStyle,
+    pub arrow: LinkArrow,
+    pub color: String,
+    pub width: f32,
+    /// Visible part of the curve as SVG path data (absolute coordinates).
+    pub path: String,
+    /// Arrowhead polygons, empty when absent.
+    pub arrow_end: Vec<Pt>,
+    pub arrow_start: Vec<Pt>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Scene {
     pub nodes: Vec<SceneNode>,
     pub branches: Vec<SceneBranch>,
+    pub links: Vec<SceneLink>,
     pub bounds: Rect,
     pub dark_mode: bool,
 }
@@ -160,7 +178,22 @@ pub fn build_scene(map: &MindMap) -> Scene {
     }
     walk(map, map.root, &rects, &mut nodes, &mut branches);
 
+    let links = build_links(map, &rects);
+
     let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+    let link_pts = links.iter().flat_map(|l| {
+        l.arrow_end
+            .iter()
+            .chain(l.arrow_start.iter())
+            .copied()
+            .chain(path_points(&l.path))
+    });
+    for p in link_pts {
+        x0 = x0.min(p.x);
+        y0 = y0.min(p.y);
+        x1 = x1.max(p.x);
+        y1 = y1.max(p.y);
+    }
     for n in &nodes {
         x0 = x0.min(n.rect.left());
         y0 = y0.min(n.rect.top());
@@ -176,7 +209,72 @@ pub fn build_scene(map: &MindMap) -> Scene {
     Scene {
         nodes,
         branches,
+        links,
         bounds,
         dark_mode: map.dark_mode,
     }
+}
+
+/// A hidden node (inside a collapsed branch) is represented by its nearest
+/// visible ancestor, so links never dangle when a branch is folded.
+fn visible_anchor(
+    map: &MindMap,
+    mut id: NodeId,
+    rects: &std::collections::BTreeMap<NodeId, Rect>,
+) -> Option<NodeId> {
+    loop {
+        if rects.contains_key(&id) {
+            return Some(id);
+        }
+        id = map.nodes.get(&id)?.parent?;
+    }
+}
+
+fn build_links(map: &MindMap, rects: &std::collections::BTreeMap<NodeId, Rect>) -> Vec<SceneLink> {
+    let mut out = vec![];
+    for l in &map.links {
+        let (Some(a), Some(b)) = (
+            visible_anchor(map, l.from, rects),
+            visible_anchor(map, l.to, rects),
+        ) else {
+            continue;
+        };
+        if a == b {
+            continue; // both ends sit inside the same folded branch
+        }
+        let width = 3.0;
+        let seed = l.id.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ 0x51;
+        let Some(g) = link_geometry(&rects[&a], &rects[&b], l.bend, seed, width, l.arrow) else {
+            continue;
+        };
+        let path = g
+            .points
+            .iter()
+            .enumerate()
+            .map(|(i, p)| format!("{}{:.1} {:.1}", if i == 0 { "M" } else { "L" }, p.x, p.y))
+            .collect::<Vec<_>>()
+            .join(" ");
+        out.push(SceneLink {
+            id: l.id,
+            from: l.from,
+            to: l.to,
+            style: l.style,
+            arrow: l.arrow,
+            color: l.color.clone().unwrap_or_else(|| LINK_GREY.to_string()),
+            width,
+            path,
+            arrow_end: g.arrow_end,
+            arrow_start: g.arrow_start,
+        });
+    }
+    out
+}
+
+/// Reads the points back out of the simple "M x y L x y ..." path we emit.
+fn path_points(path: &str) -> Vec<Pt> {
+    let nums: Vec<f32> = path
+        .split(|c: char| c == 'M' || c == 'L' || c.is_whitespace())
+        .filter_map(|t| t.parse().ok())
+        .collect();
+    nums.chunks_exact(2).map(|c| Pt::new(c[0], c[1])).collect()
 }

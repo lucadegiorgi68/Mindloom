@@ -1,6 +1,6 @@
 //! Import and export for Mindloom maps.
 mod fontdata;
-use mindmap_core::{build_scene, scene::Scene, BranchStyle, MindMap, Shape};
+use mindmap_core::{build_scene, scene::Scene, BranchStyle, LinkStyle, MindMap, Shape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
@@ -101,6 +101,35 @@ pub fn scene_to_svg(scene: &Scene) -> String {
                     s,
                     "<path d=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"0.6\" stroke-linejoin=\"round\"/>",
                     path_d(&br.outline, 0.0, 0.0, true), br.color, br.color
+                );
+            }
+        }
+    }
+    for l in &scene.links {
+        let dash = if l.style == LinkStyle::Dashed {
+            format!(
+                " stroke-dasharray=\"{:.1} {:.1}\"",
+                l.width * 3.0,
+                l.width * 2.4
+            )
+        } else {
+            String::new()
+        };
+        let _ = write!(
+            s,
+            "<path d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{:.1}\" stroke-linecap=\"round\"{}/>",
+            l.path, l.color, l.width, dash
+        );
+        for head in [&l.arrow_end, &l.arrow_start] {
+            if !head.is_empty() {
+                let pts: Vec<String> = head
+                    .iter()
+                    .map(|p| format!("{:.1},{:.1}", p.x, p.y))
+                    .collect();
+                let _ = write!(
+                    s,
+                    "<polygon points=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\" stroke-linejoin=\"round\"/>",
+                    pts.join(" "), l.color, l.color
                 );
             }
         }

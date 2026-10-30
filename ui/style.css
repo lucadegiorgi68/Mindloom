@@ -56,3 +56,24 @@ button.on { background: rgba(26, 140, 255, 0.2); color: var(--accent); }
 #shapes button.on svg text { fill: var(--accent); }
 #f-font { max-width: 150px; font-size: 14px; border: 1px solid var(--line); background: var(--bar); margin-right: 2px; }
 #f-font option { font-size: 16px; }
+#linkbar { position: fixed; bottom: 46px; left: 50%; transform: translateX(-50%); z-index: 5; display: flex;
+  gap: 6px; align-items: center; padding: 6px 8px; background: var(--bar); border: 1px solid var(--line);
+  border-radius: 14px; box-shadow: var(--shadow); }
+#link-swatches { display: flex; gap: 4px; padding-right: 6px; }
+#link-swatches i { width: 20px; height: 20px; border-radius: 50%; cursor: pointer; border: 2px solid var(--bar);
+  outline: 1px solid var(--line); }
+#link-swatches i:hover { transform: scale(1.15); }
+.seg { display: flex; gap: 2px; padding: 0 6px; border-left: 1px solid var(--line); }
+.seg button { padding: 4px 5px; }
+.seg svg { width: 28px; height: 16px; fill: none; stroke: var(--fg); stroke-width: 2; stroke-linecap: round;
+  stroke-linejoin: round; display: block; }
+.seg svg .head { fill: var(--fg); stroke-width: 1; }
+.seg button.on { background: rgba(26, 140, 255, 0.2); }
+.seg button.on svg { stroke: var(--accent); }
+.seg button.on svg .head { fill: var(--accent); }
+#canvas.linking { cursor: crosshair; }
+#canvas.linking .hit { cursor: crosshair; }
+#toast.info { background: var(--accent); }
+.linkhit { fill: none; stroke: transparent; stroke-width: 18; cursor: pointer; pointer-events: stroke; }
+.linksel { fill: none; stroke: var(--accent); stroke-opacity: 0.28; stroke-linecap: round; pointer-events: none; }
+[hidden] { display: none !important; }

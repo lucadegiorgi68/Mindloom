@@ -1,7 +1,7 @@
 //! Command layer shared by the desktop shell and the dev server.
 //! Every UI action is a named command with JSON arguments, so the shell
 //! stays a thin wrapper and all behaviour is testable here.
-use mindmap_core::{build_scene, Document, MindMap, Shape};
+use mindmap_core::{build_scene, Document, LinkArrow, LinkStyle, MindMap, Shape};
 use serde_json::{json, Value};
 
 pub struct Session {
@@ -12,6 +12,10 @@ fn id(args: &Value, key: &str) -> Result<u64, String> {
     args.get(key)
         .and_then(Value::as_u64)
         .ok_or_else(|| format!("missing '{key}'"))
+}
+
+fn is_hex(c: &str) -> bool {
+    c.len() == 7 && c.starts_with('#') && c[1..].chars().all(|h| h.is_ascii_hexdigit())
 }
 
 fn text<'a>(args: &'a Value, key: &str) -> Result<&'a str, String> {
@@ -155,6 +159,57 @@ impl Session {
                         Some(())
                     })
                     .ok_or("no such node")?;
+            }
+            "add_link" => {
+                let (f, t) = (id(a, "from")?, id(a, "to")?);
+                let new = self
+                    .doc
+                    .edit(|m| m.add_link(f, t))
+                    .ok_or("cannot link these nodes (same node, or already linked that way)")?;
+                let mut st = self.state();
+                st["new_link"] = json!(new);
+                return Ok(st);
+            }
+            "delete_link" => {
+                let i = id(a, "id")?;
+                self.doc
+                    .edit(|m| m.delete_link(i).then_some(()))
+                    .ok_or("no such link")?;
+            }
+            "set_link" => {
+                let i = id(a, "id")?;
+                let style: Option<LinkStyle> = match a.get("style") {
+                    Some(v) => {
+                        Some(serde_json::from_value(v.clone()).map_err(|_| "unknown link style")?)
+                    }
+                    None => None,
+                };
+                let arrow: Option<LinkArrow> = match a.get("arrow") {
+                    Some(v) => {
+                        Some(serde_json::from_value(v.clone()).map_err(|_| "unknown arrow")?)
+                    }
+                    None => None,
+                };
+                let color = match a.get("color").and_then(Value::as_str) {
+                    Some(c) if is_hex(c) => Some(c.to_string()),
+                    Some(_) => return Err("colour must look like #rrggbb".into()),
+                    None => None,
+                };
+                self.doc
+                    .edit(|m| {
+                        let l = m.links.iter_mut().find(|l| l.id == i)?;
+                        if let Some(s) = style {
+                            l.style = s;
+                        }
+                        if let Some(r) = arrow {
+                            l.arrow = r;
+                        }
+                        if let Some(c) = color {
+                            l.color = Some(c);
+                        }
+                        Some(())
+                    })
+                    .ok_or("no such link")?;
             }
             "toggle_collapse" => {
                 let i = id(a, "id")?;

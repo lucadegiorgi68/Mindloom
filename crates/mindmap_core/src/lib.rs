@@ -4,11 +4,12 @@ pub mod fonts;
 pub mod geom;
 pub mod history;
 pub mod layout;
+pub mod links;
 pub mod model;
 pub mod organic;
 pub mod scene;
 
 pub use geom::{Pt, Rect};
 pub use history::Document;
-pub use model::{BranchStyle, MindMap, Node, NodeId, Shape, Side};
+pub use model::{BranchStyle, Link, LinkArrow, LinkStyle, MindMap, Node, NodeId, Shape, Side};
 pub use scene::{build_scene, Scene};

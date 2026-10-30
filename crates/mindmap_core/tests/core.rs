@@ -276,3 +276,215 @@ fn layout_width_depends_on_the_font() {
     assert!(width("Caveat") < width("Open Sans"));
     assert!(width("Open Sans") < width("Montserrat"));
 }
+
+// ---------- links ----------
+
+fn two_far_nodes() -> (MindMap, u64, u64) {
+    let mut m = MindMap::new("Root");
+    let a = m.add_child(1, "Alpha").unwrap();
+    let b = m.add_child(1, "Beta").unwrap();
+    (m, a, b)
+}
+
+#[test]
+fn add_link_rejects_self_unknown_and_duplicates() {
+    let (mut m, a, b) = two_far_nodes();
+    assert!(m.add_link(a, a).is_none());
+    assert!(m.add_link(a, 999).is_none());
+    assert!(m.add_link(999, a).is_none());
+    let id = m.add_link(a, b).unwrap();
+    assert!(m.add_link(a, b).is_none(), "same direction twice");
+    assert!(
+        m.add_link(b, a).is_some(),
+        "the reverse direction is a different relation"
+    );
+    assert_ne!(m.add_link(a, 1).unwrap(), id);
+}
+
+#[test]
+fn new_link_defaults_to_solid_with_end_arrow() {
+    let (mut m, a, b) = two_far_nodes();
+    m.add_link(a, b).unwrap();
+    let l = &m.links[0];
+    assert_eq!(l.style, LinkStyle::Solid);
+    assert_eq!(l.arrow, LinkArrow::End);
+    assert!(l.color.is_none());
+}
+
+#[test]
+fn deleting_a_node_removes_its_links_only() {
+    let mut m = MindMap::new("Root");
+    let a = m.add_child(1, "A").unwrap();
+    let a1 = m.add_child(a, "A1").unwrap();
+    let b = m.add_child(1, "B").unwrap();
+    let c = m.add_child(1, "C").unwrap();
+    m.add_link(a1, b).unwrap();
+    m.add_link(b, c).unwrap();
+    assert!(m.delete(a)); // takes A1 with it
+    assert_eq!(m.links.len(), 1);
+    assert_eq!((m.links[0].from, m.links[0].to), (b, c));
+}
+
+#[test]
+fn link_ids_never_collide_with_live_links() {
+    let (mut m, a, b) = two_far_nodes();
+    let l1 = m.add_link(a, b).unwrap();
+    let l2 = m.add_link(b, a).unwrap();
+    assert!(m.delete_link(l1));
+    let l3 = m.add_link(a, 1).unwrap();
+    assert!(l3 != l2, "a new link must not reuse a live id");
+    assert!(!m.delete_link(12345));
+}
+
+#[test]
+fn files_saved_before_links_existed_still_load() {
+    let m = sample();
+    let mut v = serde_json::to_value(&m).unwrap();
+    v.as_object_mut().unwrap().remove("links");
+    let back: MindMap = serde_json::from_value(v).unwrap();
+    assert!(back.links.is_empty());
+}
+
+#[test]
+fn links_survive_serialisation() {
+    let (mut m, a, b) = two_far_nodes();
+    let id = m.add_link(a, b).unwrap();
+    m.links[0].style = LinkStyle::Dashed;
+    m.links[0].arrow = LinkArrow::Both;
+    m.links[0].color = Some("#ff0000".into());
+    let back: MindMap = serde_json::from_str(&serde_json::to_string(&m).unwrap()).unwrap();
+    let l = back.links.iter().find(|l| l.id == id).unwrap();
+    assert_eq!(
+        (l.style, l.arrow, l.color.as_deref()),
+        (LinkStyle::Dashed, LinkArrow::Both, Some("#ff0000"))
+    );
+}
+
+fn rect_has(r: &Rect, p: &Pt, slack: f32) -> bool {
+    p.x > r.left() - slack
+        && p.x < r.right() + slack
+        && p.y > r.top() - slack
+        && p.y < r.bottom() + slack
+}
+
+#[test]
+fn link_curve_starts_and_ends_just_outside_the_nodes() {
+    let (mut m, a, b) = two_far_nodes();
+    m.add_link(a, b).unwrap();
+    m.links[0].arrow = LinkArrow::None;
+    let s = build_scene(&m);
+    let rects = layout::layout(&m);
+    let l = &s.links[0];
+    assert!(l.arrow_end.is_empty() && l.arrow_start.is_empty());
+    let pts = links_points(&l.path);
+    let (first, last) = (pts[0], *pts.last().unwrap());
+    assert!(!rects[&a].left().is_nan());
+    // Endpoints hug the node frames (padding 5) without entering them.
+    assert!(rect_has(&rects[&a], &first, 6.5) && !rect_has(&rects[&a], &first, 3.0));
+    assert!(rect_has(&rects[&b], &last, 6.5) && !rect_has(&rects[&b], &last, 3.0));
+}
+
+fn links_points(path: &str) -> Vec<Pt> {
+    let nums: Vec<f32> = path
+        .split(|c: char| c == 'M' || c == 'L' || c.is_whitespace())
+        .filter_map(|t| t.parse().ok())
+        .collect();
+    nums.chunks_exact(2).map(|c| Pt::new(c[0], c[1])).collect()
+}
+
+#[test]
+fn arrow_options_control_which_heads_exist_and_trim_the_line() {
+    let (mut m, a, b) = two_far_nodes();
+    m.add_link(a, b).unwrap();
+    let heads = |arrow: LinkArrow, m: &mut MindMap| {
+        m.links[0].arrow = arrow;
+        let l = build_scene(m).links.remove(0);
+        (
+            l.arrow_start.len(),
+            l.arrow_end.len(),
+            links_points(&l.path),
+        )
+    };
+    let (s0, e0, none_pts) = heads(LinkArrow::None, &mut m);
+    let (s1, e1, end_pts) = heads(LinkArrow::End, &mut m);
+    let (s2, e2, start_pts) = heads(LinkArrow::Start, &mut m);
+    let (s3, e3, both_pts) = heads(LinkArrow::Both, &mut m);
+    assert_eq!((s0, e0), (0, 0));
+    assert_eq!((s1, e1), (0, 4));
+    assert_eq!((s2, e2), (4, 0));
+    assert_eq!((s3, e3), (4, 4));
+    let len = |p: &[Pt]| {
+        p.windows(2)
+            .map(|w| ((w[1].x - w[0].x).powi(2) + (w[1].y - w[0].y).powi(2)).sqrt())
+            .sum::<f32>()
+    };
+    // The line stops short under an arrowhead instead of poking through it.
+    assert!(len(&end_pts) < len(&none_pts) - 5.0);
+    assert!(len(&start_pts) < len(&none_pts) - 5.0);
+    assert!(len(&both_pts) < len(&end_pts) - 5.0);
+}
+
+#[test]
+fn arrowhead_tip_sits_on_the_target_end_of_the_curve() {
+    let (mut m, a, b) = two_far_nodes();
+    m.add_link(a, b).unwrap();
+    let l = build_scene(&m).links.remove(0);
+    let rects = layout::layout(&m);
+    let tip = l.arrow_end[0];
+    assert!(rect_has(&rects[&b], &tip, 6.5) && !rect_has(&rects[&b], &tip, 3.0));
+}
+
+#[test]
+fn link_to_a_hidden_node_attaches_to_its_visible_ancestor() {
+    let mut m = MindMap::new("Root");
+    let a = m.add_child(1, "A").unwrap();
+    let a1 = m.add_child(a, "A1").unwrap();
+    let b = m.add_child(1, "B").unwrap();
+    m.add_link(a1, b).unwrap();
+    assert_eq!(build_scene(&m).links.len(), 1);
+    m.nodes.get_mut(&a).unwrap().collapsed = true;
+    let s = build_scene(&m);
+    assert_eq!(s.links.len(), 1, "link stays, anchored on A");
+    let rects = layout::layout(&m);
+    let first = links_points(&s.links[0].path)[0];
+    assert!(rect_has(&rects[&a], &first, 7.0));
+}
+
+#[test]
+fn link_inside_one_folded_branch_is_hidden() {
+    let mut m = MindMap::new("Root");
+    let a = m.add_child(1, "A").unwrap();
+    let a1 = m.add_child(a, "A1").unwrap();
+    let a2 = m.add_child(a, "A2").unwrap();
+    m.add_link(a1, a2).unwrap();
+    assert_eq!(build_scene(&m).links.len(), 1);
+    m.nodes.get_mut(&a).unwrap().collapsed = true;
+    assert!(build_scene(&m).links.is_empty());
+}
+
+#[test]
+fn links_follow_moved_nodes_and_count_toward_bounds() {
+    let (mut m, a, b) = two_far_nodes();
+    m.add_link(a, b).unwrap();
+    let before = links_points(&build_scene(&m).links[0].path)[0];
+    m.nodes.get_mut(&a).unwrap().dy = 300.0;
+    let s = build_scene(&m);
+    let after = links_points(&s.links[0].path)[0];
+    assert!((after.y - before.y).abs() > 100.0);
+    let maxy = s
+        .nodes
+        .iter()
+        .map(|n| n.rect.bottom())
+        .fold(f32::MIN, f32::max);
+    assert!(s.bounds.bottom() >= maxy - 0.01);
+}
+
+#[test]
+fn a_pair_linked_both_ways_draws_two_distinct_curves() {
+    let (mut m, a, b) = two_far_nodes();
+    m.add_link(a, b).unwrap();
+    m.add_link(b, a).unwrap();
+    let s = build_scene(&m);
+    assert_eq!(s.links.len(), 2);
+    assert_ne!(s.links[0].path, s.links[1].path);
+}

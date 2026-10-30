@@ -28,6 +28,38 @@ pub enum BranchStyle {
     Straight,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LinkStyle {
+    Solid,
+    Dashed,
+}
+
+/// Which ends of a link carry an arrowhead.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LinkArrow {
+    None,
+    End,
+    Start,
+    Both,
+}
+
+/// A relation between two nodes anywhere in the map, drawn as a curve that
+/// is separate from the tree of branches.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Link {
+    pub id: u64,
+    pub from: NodeId,
+    pub to: NodeId,
+    pub style: LinkStyle,
+    pub arrow: LinkArrow,
+    /// Hex colour. None uses the neutral link grey.
+    pub color: Option<String>,
+    /// How far the curve bows away from a straight line (fraction of length).
+    pub bend: f32,
+}
+
+pub const LINK_GREY: &str = "#8a93a3";
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Node {
     pub id: NodeId,
@@ -84,6 +116,9 @@ pub struct MindMap {
     pub next_id: NodeId,
     pub dark_mode: bool,
     pub auto_layout: bool,
+    /// Relations between nodes. Older files lack this.
+    #[serde(default)]
+    pub links: Vec<Link>,
 }
 
 pub const PALETTE: [&str; 8] = [
@@ -104,6 +139,7 @@ impl MindMap {
             next_id: 2,
             dark_mode: false,
             auto_layout: true,
+            links: vec![],
         }
     }
 
@@ -208,6 +244,10 @@ impl MindMap {
                 stack.extend(node.children);
             }
         }
+        // A link cannot outlive either of its ends.
+        let nodes = &self.nodes;
+        self.links
+            .retain(|l| nodes.contains_key(&l.from) && nodes.contains_key(&l.to));
         true
     }
 
@@ -291,6 +331,35 @@ impl MindMap {
         for k in kids {
             self.set_side_recursive(k, side);
         }
+    }
+
+    /// Adds a link from `from` to `to`. Refuses self links, unknown nodes and
+    /// a second link in the same direction between the same pair.
+    pub fn add_link(&mut self, from: NodeId, to: NodeId) -> Option<u64> {
+        if from == to
+            || !self.nodes.contains_key(&from)
+            || !self.nodes.contains_key(&to)
+            || self.links.iter().any(|l| l.from == from && l.to == to)
+        {
+            return None;
+        }
+        let id = self.links.iter().map(|l| l.id).max().unwrap_or(0) + 1;
+        self.links.push(Link {
+            id,
+            from,
+            to,
+            style: LinkStyle::Solid,
+            arrow: LinkArrow::End,
+            color: None,
+            bend: 0.22,
+        });
+        Some(id)
+    }
+
+    pub fn delete_link(&mut self, id: u64) -> bool {
+        let before = self.links.len();
+        self.links.retain(|l| l.id != id);
+        self.links.len() != before
     }
 
     /// Plain text outline, depth first, used by export and tests.

@@ -8,6 +8,14 @@ swell and drift slightly (deterministically, so a map always looks the same),
 labels ride on underlines that continue the branch, and the central idea is a
 hand drawn marker frame whose stroke overshoots its start.
 
+## Links
+
+Select a node and press `L` (or the Link button), then click another node to
+draw a curved relation between them. Click a link to choose a solid or dashed
+line, arrowheads (none, end, start, both) and a colour; `Delete` removes it.
+Links follow their nodes, survive folding, and are exported to SVG and saved in
+`.mindloom` files.
+
 ## Fonts
 
 Seven open licensed fonts are bundled in `ui/fonts` (SIL Open Font License, see
@@ -32,7 +40,7 @@ just the fonts and weights the map uses.
 ## Develop
 
 ```
-cargo test                                              # 38 tests
+cargo test                                              # 55 tests
 cargo run -p mindmap_api --example dev_server           # UI at http://127.0.0.1:5173
 cargo run -p mindmap_io --example sample -- out.svg     # render a sample map
 ```

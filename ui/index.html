@@ -22,6 +22,7 @@
     <button id="b-sibling" title="Add sibling (Enter)">Add sibling</button>
     <button id="b-delete" title="Delete (Delete)">Delete</button>
     <button id="b-fold" title="Collapse or expand (Space)">Fold</button>
+    <button id="b-link" title="Link the selected node to another node (L)">Link</button>
   </div>
   <div class="group">
     <button id="b-clean" title="Remove manual moves, restore automatic layout">Clean up</button>
@@ -59,10 +60,25 @@
   <button id="f-bigger" title="Larger text">A+</button>
 </div>
 
+<div id="linkbar" hidden>
+  <div id="link-swatches"></div>
+  <div class="seg" id="link-style">
+    <button data-style="Solid" title="Continuous line"><svg viewBox="0 0 28 16"><path d="M3 8 H25"/></svg></button>
+    <button data-style="Dashed" title="Dashed line"><svg viewBox="0 0 28 16"><path d="M3 8 H25" stroke-dasharray="4 3"/></svg></button>
+  </div>
+  <div class="seg" id="link-arrow">
+    <button data-arrow="None" title="No arrowheads"><svg viewBox="0 0 28 16"><path d="M3 8 H25"/></svg></button>
+    <button data-arrow="End" title="Arrowhead at the end"><svg viewBox="0 0 28 16"><path d="M3 8 H20"/><path class="head" d="M26 8 L19 4 L20.5 8 L19 12 Z"/></svg></button>
+    <button data-arrow="Start" title="Arrowhead at the start"><svg viewBox="0 0 28 16"><path d="M8 8 H25"/><path class="head" d="M2 8 L9 4 L7.5 8 L9 12 Z"/></svg></button>
+    <button data-arrow="Both" title="Arrowheads at both ends"><svg viewBox="0 0 28 16"><path d="M8 8 H20"/><path class="head" d="M26 8 L19 4 L20.5 8 L19 12 Z"/><path class="head" d="M2 8 L9 4 L7.5 8 L9 12 Z"/></svg></button>
+  </div>
+  <button id="link-delete" title="Delete this link (Delete)">Delete link</button>
+</div>
+
 <textarea id="editor" hidden rows="1" spellcheck="false"></textarea>
 <div id="toast" hidden></div>
 <input type="file" id="file-input" hidden>
-<div id="help">Tab: add branch &nbsp; Enter: sibling &nbsp; F2 or double click: edit &nbsp; Drag: move &nbsp; Shift+drop on a node: re-parent &nbsp; Wheel: zoom &nbsp; Drag background: pan</div>
+<div id="help">Tab: add branch &nbsp; Enter: sibling &nbsp; F2 or double click: edit &nbsp; Drag: move &nbsp; Shift+drop on a node: re-parent &nbsp; L: link two nodes &nbsp; Wheel: zoom &nbsp; Drag background: pan</div>
 <script src="app.js"></script>
 </body>
 </html>

@@ -12,6 +12,8 @@ let sel = null;          // selected node id
 let view = { x: 0, y: 0, k: 1 };
 let editing = null;      // { id, fresh }
 let busy = false;
+let selLink = null;      // selected link id
+let linkMode = false;    // waiting for the second node of a new link
 
 // ---------- Rust bridge ----------
 async function call(cmd, args = {}) {
@@ -40,11 +42,12 @@ function act(cmd, args = {}) {
   return p;
 }
 
-function toast(msg) {
+function toast(msg, info = false) {
   const t = $('toast');
   t.textContent = msg; t.hidden = false;
+  t.classList.toggle('info', info);
   clearTimeout(toast.h);
-  toast.h = setTimeout(() => (t.hidden = true), 2600);
+  toast.h = setTimeout(() => (t.hidden = true), info ? 4000 : 2600);
 }
 
 // ---------- Rendering ----------
@@ -72,6 +75,7 @@ function render() {
   $('title').textContent = S.title;
   setupFonts(S.fonts);
   if (sel !== null && !nodeById(sel)) sel = null;
+  if (selLink !== null && !S.scene.links.some((l) => l.id === selLink)) selLink = null;
   world.replaceChildren();
   const bg = el('g', {}, world);
   for (const b of S.scene.branches) {
@@ -83,10 +87,12 @@ function render() {
         'stroke-linejoin': 'round' }, bg);
     }
   }
+  drawLinks();
   const rootRect = nodeById(S.root).rect;
   for (const n of S.scene.nodes) drawNode(n, rootRect);
   drawSelection(rootRect);
   updateFormatBar();
+  updateLinkBar();
 }
 
 function drawNode(n, rootRect) {
@@ -164,6 +170,66 @@ function setupFonts(fonts) {
 }
 const stackOf = (name) => (S.fonts.find((f) => f.name === name) || S.fonts[0]).stack;
 
+// ---------- Links ----------
+function drawLinks() {
+  const g = el('g', {}, world);
+  for (const l of S.scene.links) {
+    if (l.id === selLink) {
+      el('path', { class: 'linksel', d: l.path, 'stroke-width': l.width + 10 }, g);
+    }
+    el('path', { d: l.path, fill: 'none', stroke: l.color, 'stroke-width': l.width, 'stroke-linecap': 'round',
+      'stroke-dasharray': l.style === 'Dashed' ? `${l.width * 3} ${l.width * 2.4}` : 'none',
+      'pointer-events': 'none' }, g);
+    for (const head of [l.arrow_end, l.arrow_start]) {
+      if (!head.length) continue;
+      el('polygon', { points: head.map((p) => `${p.x},${p.y}`).join(' '), fill: l.color, stroke: l.color,
+        'stroke-width': 1, 'stroke-linejoin': 'round', 'pointer-events': 'none' }, g);
+    }
+    el('path', { class: 'linkhit', d: l.path, 'data-link': l.id }, g);
+  }
+}
+
+const LINK_COLORS = ['#8a93a3', ...PALETTE];
+for (const c of LINK_COLORS) {
+  const i = document.createElement('i');
+  i.style.background = c; i.title = c;
+  i.onclick = () => selLink !== null && act('set_link', { id: selLink, color: c });
+  $('link-swatches').appendChild(i);
+}
+for (const b of document.querySelectorAll('#link-style button')) {
+  b.onclick = () => selLink !== null && act('set_link', { id: selLink, style: b.dataset.style });
+}
+for (const b of document.querySelectorAll('#link-arrow button')) {
+  b.onclick = () => selLink !== null && act('set_link', { id: selLink, arrow: b.dataset.arrow });
+}
+$('link-delete').onclick = () => selLink !== null && act('delete_link', { id: selLink });
+
+function updateLinkBar() {
+  const l = selLink === null ? null : S.scene.links.find((x) => x.id === selLink);
+  $('linkbar').hidden = !l || !!editing;
+  if (!l) return;
+  for (const b of document.querySelectorAll('#link-style button')) b.classList.toggle('on', b.dataset.style === l.style);
+  for (const b of document.querySelectorAll('#link-arrow button')) b.classList.toggle('on', b.dataset.arrow === l.arrow);
+}
+
+function setLinkMode(on) {
+  linkMode = on;
+  svg.classList.toggle('linking', on);
+  if (!on) $('toast').hidden = true;
+}
+function startLink() {
+  if (sel === null) { toast('Select a node first, then press Link'); return; }
+  setLinkMode(true);
+  toast('Now click the node to link to (Esc cancels)', true);
+}
+async function finishLink(target) {
+  const from = sel;
+  setLinkMode(false);
+  if (from === null || target === from) return;
+  const st = await act('add_link', { from, to: target });
+  if (st) { sel = null; selLink = st.new_link; render(); }
+}
+
 // ---------- Format bar ----------
 for (const c of PALETTE) {
   const i = document.createElement('i');
@@ -212,7 +278,17 @@ svg.addEventListener('pointerdown', (e) => {
   const plus = e.target.closest('[data-plus]');
   if (plus) { e.stopPropagation(); addChild(Number(plus.getAttribute('data-plus'))); return; }
   const hit = e.target.closest('[data-id]');
+  const linkHit = e.target.closest('[data-link]');
   svg.setPointerCapture(e.pointerId);
+  if (linkMode) {
+    if (hit) finishLink(Number(hit.getAttribute('data-id'))); else setLinkMode(false);
+    return;
+  }
+  if (!hit && linkHit) {
+    sel = null; selLink = Number(linkHit.getAttribute('data-link')); render();
+    return;
+  }
+  selLink = null;
   if (hit) {
     const id = Number(hit.getAttribute('data-id'));
     // Double click is detected by hand: redrawing on pointerdown detaches the
@@ -464,6 +540,7 @@ $('b-child').onclick = () => addChild(sel ?? S.root);
 $('b-sibling').onclick = () => sel !== null && addSibling(sel);
 $('b-delete').onclick = () => sel !== null && act('delete', { id: sel });
 $('b-fold').onclick = () => sel !== null && act('toggle_collapse', { id: sel });
+$('b-link').onclick = startLink;
 $('b-clean').onclick = () => act('clean_up');
 $('b-fit').onclick = fit;
 $('b-dark').onclick = () => act('set_dark', { on: !S.scene.dark_mode });
@@ -478,7 +555,10 @@ addEventListener('keydown', (e) => {
   else if (mod && e.key.toLowerCase() === 'o') { e.preventDefault(); doOpen(); }
   else if (mod && e.key.toLowerCase() === 'n') { e.preventDefault(); $('b-new').click(); }
   else if (mod && e.key === '0') { e.preventDefault(); fit(); }
+  else if (e.key === 'Escape') { if (linkMode) setLinkMode(false); else { sel = null; selLink = null; render(); } }
+  else if (selLink !== null && (e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); act('delete_link', { id: selLink }); }
   else if (sel === null) return;
+  else if (e.key === 'l' || e.key === 'L') { e.preventDefault(); startLink(); }
   else if (e.key === 'Tab') { e.preventDefault(); addChild(sel); }
   else if (e.key === 'Enter') { e.preventDefault(); addSibling(sel); }
   else if (e.key === 'F2') { e.preventDefault(); startEdit(sel, false); }
