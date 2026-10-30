@@ -80,3 +80,29 @@ fn clean_up_resets_manual_moves() {
         .unwrap();
     assert_eq!(before, after);
 }
+
+#[test]
+fn font_changes_are_validated_and_listed() {
+    let mut s = Session::new("Root");
+    let st = s.invoke("state", &json!({})).unwrap();
+    assert_eq!(st["fonts"].as_array().unwrap().len(), 7);
+    assert_eq!(st["fonts"][0]["name"], "Open Sans");
+    let st = s
+        .invoke("set_format", &json!({"id": 1, "font": "Caveat"}))
+        .unwrap();
+    assert_eq!(st["scene"]["nodes"][0]["font"], "Caveat");
+    assert_eq!(st["nodes"][0]["font"], "Caveat");
+    assert!(s
+        .invoke("set_format", &json!({"id": 1, "font": "Wingdings"}))
+        .is_err());
+    // A rejected change must not touch the document or the history.
+    assert_eq!(
+        s.invoke("state", &json!({})).unwrap()["scene"]["nodes"][0]["font"],
+        "Caveat"
+    );
+    s.invoke("undo", &json!({})).unwrap();
+    assert_eq!(
+        s.invoke("state", &json!({})).unwrap()["scene"]["nodes"][0]["font"],
+        "Open Sans"
+    );
+}

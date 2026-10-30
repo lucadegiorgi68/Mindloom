@@ -70,6 +70,7 @@ function render() {
   $('b-undo').disabled = !S.can_undo;
   $('b-redo').disabled = !S.can_redo;
   $('title').textContent = S.title;
+  setupFonts(S.fonts);
   if (sel !== null && !nodeById(sel)) sel = null;
   world.replaceChildren();
   const bg = el('g', {}, world);
@@ -107,7 +108,7 @@ function drawNode(n, rootRect) {
   const lines = n.text.split('\n');
   lines.forEach((line, i) => {
     const t = el('text', { x: r.cx, y: n.text_baseline - (lines.length - 1 - i) * n.font_size * 1.25,
-      'text-anchor': 'middle', 'font-size': n.font_size, 'font-weight': n.bold ? 700 : 400,
+      'text-anchor': 'middle', 'font-family': n.font_stack, 'font-size': n.font_size, 'font-weight': n.bold ? 700 : 400,
       'font-style': n.italic ? 'italic' : 'normal' }, g);
     t.textContent = line;
   });
@@ -139,6 +140,30 @@ function drawSelection(rootRect) {
   }
 }
 
+// ---------- Fonts ----------
+// The catalogue lives in Rust. Here it only becomes @font-face rules and the
+// picker, so adding a font never needs a change in this file.
+let fontsReady = false;
+function setupFonts(fonts) {
+  if (fontsReady) return;
+  fontsReady = true;
+  const css = fonts.flatMap((f) => f.files.map((x) =>
+    `@font-face{font-family:'${f.name}';font-weight:${x.weight};src:url(fonts/${x.file}) format('woff2');font-display:swap;}`));
+  const st = document.createElement('style');
+  st.textContent = css.join('\n');
+  document.head.appendChild(st);
+  const picker = $('f-font');
+  for (const f of fonts) {
+    const o = document.createElement('option');
+    o.value = f.name; o.textContent = f.name; o.style.fontFamily = f.stack;
+    picker.appendChild(o);
+  }
+  picker.onchange = (e) => { if (sel !== null) act('set_format', { id: sel, font: e.target.value }); };
+  // Preload so the first render and the editor never flash a fallback face.
+  for (const f of fonts) document.fonts.load(`20px '${f.name}'`).catch(() => {});
+}
+const stackOf = (name) => (S.fonts.find((f) => f.name === name) || S.fonts[0]).stack;
+
 // ---------- Format bar ----------
 for (const c of PALETTE) {
   const i = document.createElement('i');
@@ -161,6 +186,7 @@ function updateFormatBar() {
   if (bar.hidden) return;
   const m = meta(sel), n = nodeById(sel);
   for (const b of document.querySelectorAll('#shapes button')) b.classList.toggle('on', b.dataset.shape === m.shape);
+  $('f-font').value = m.font;
   $('f-bold').classList.toggle('on', m.bold);
   $('f-italic').classList.toggle('on', m.italic);
   $('f-color').value = n.color;
@@ -250,7 +276,8 @@ svg.addEventListener('wheel', (e) => {
 // ---------- Editing ----------
 const editor = $('editor');
 
-function placeEditor(sx, sy, fontSize, bold, italic) {
+function placeEditor(sx, sy, fontSize, bold, italic, stack) {
+  editor.style.fontFamily = stack || stackOf('Open Sans');
   editor.style.fontSize = fontSize * view.k + 'px';
   editor.style.fontWeight = bold ? 700 : 400;
   editor.style.fontStyle = italic ? 'italic' : 'normal';
@@ -282,7 +309,7 @@ function startEdit(id, fresh, keepValue = false) {
   const r = n.rect;
   if (!keepValue) editor.value = n.text;
   editor.hidden = false;
-  placeEditor(view.x + r.cx * view.k, view.y + r.cy * view.k, n.font_size, n.bold, n.italic);
+  placeEditor(view.x + r.cx * view.k, view.y + r.cy * view.k, n.font_size, n.bold, n.italic, n.font_stack);
   editor.focus();
   if (!keepValue && !wasPending) editor.select();
 }

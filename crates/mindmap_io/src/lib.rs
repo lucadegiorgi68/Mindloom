@@ -1,4 +1,5 @@
 //! Import and export for Mindloom maps.
+mod fontdata;
 use mindmap_core::{build_scene, scene::Scene, BranchStyle, MindMap, Shape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
@@ -78,6 +79,7 @@ pub fn scene_to_svg(scene: &Scene) -> String {
         "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"{:.0} {:.0} {:.0} {:.0}\" width=\"{:.0}\" height=\"{:.0}\" font-family=\"Open Sans, Segoe UI, sans-serif\">",
         b.left() - pad, b.top() - pad, b.w + pad * 2.0, b.h + pad * 2.0, b.w + pad * 2.0, b.h + pad * 2.0
     );
+    s.push_str(&font_faces(scene));
     let _ = write!(
         s,
         "<rect x=\"{:.0}\" y=\"{:.0}\" width=\"100%\" height=\"100%\" fill=\"{}\"/>",
@@ -136,8 +138,8 @@ pub fn scene_to_svg(scene: &Scene) -> String {
             let y = n.text_baseline - (lines.len() - 1 - i) as f32 * n.font_size * 1.25;
             let _ = write!(
                 s,
-                "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\" font-size=\"{:.0}\" fill=\"{}\" font-weight=\"{}\" font-style=\"{}\">{}</text>",
-                r.cx, y, n.font_size, fg,
+                "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{:.0}\" fill=\"{}\" font-weight=\"{}\" font-style=\"{}\">{}</text>",
+                r.cx, y, esc(&n.font_stack), n.font_size, fg,
                 if n.bold { "700" } else { "400" },
                 if n.italic { "italic" } else { "normal" },
                 esc(line)
@@ -146,6 +148,44 @@ pub fn scene_to_svg(scene: &Scene) -> String {
     }
     s.push_str("</svg>");
     s
+}
+
+/// `@font-face` rules for exactly the fonts and weights the map uses, with the
+/// files embedded as data URIs, so the SVG renders identically anywhere.
+fn font_faces(scene: &Scene) -> String {
+    let mut used: Vec<(String, u16)> = vec![];
+    for n in &scene.nodes {
+        let key = (n.font.clone(), if n.bold { 700 } else { 400 });
+        if !used.contains(&key) {
+            used.push(key);
+        }
+    }
+    let mut css = String::new();
+    for (name, weight) in used {
+        let Some(info) = mindmap_core::fonts::find(&name) else {
+            continue;
+        };
+        // Use the exact weight if shipped, otherwise the closest available.
+        let Some((w, file)) = info
+            .files
+            .iter()
+            .min_by_key(|(w, _)| (*w as i32 - weight as i32).abs())
+        else {
+            continue;
+        };
+        if let Some(bytes) = fontdata::bytes(file) {
+            let _ = write!(
+                css,
+                "@font-face{{font-family:'{name}';font-weight:{w};src:url(data:font/woff2;base64,{}) format('woff2');}}",
+                fontdata::base64(bytes)
+            );
+        }
+    }
+    if css.is_empty() {
+        css
+    } else {
+        format!("<style>{css}</style>")
+    }
 }
 
 /// Markdown outline: the root becomes a heading, descendants nested bullets.

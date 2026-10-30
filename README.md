@@ -8,6 +8,17 @@ swell and drift slightly (deterministically, so a map always looks the same),
 labels ride on underlines that continue the branch, and the central idea is a
 hand drawn marker frame whose stroke overshoots its start.
 
+## Fonts
+
+Seven open licensed fonts are bundled in `ui/fonts` (SIL Open Font License, see
+`ui/fonts/LICENSES.txt`) so maps look the same on every machine: Open Sans,
+Montserrat, Lora, Caveat, Patrick Hand, Pacifico and Source Code Pro. The
+catalogue lives in `crates/mindmap_core/src/fonts.rs`, which is the only place
+to edit to add a font (drop the `.woff2` files in `ui/fonts`, add an entry, and
+add the file names to `crates/mindmap_io/src/fontdata.rs`). Each node has its
+own font, new branches inherit their parent's font, and exported SVGs embed
+just the fonts and weights the map uses.
+
 ## Layout
 
 | Path | Purpose |
@@ -21,7 +32,7 @@ hand drawn marker frame whose stroke overshoots its start.
 ## Develop
 
 ```
-cargo test                                              # 29 tests
+cargo test                                              # 38 tests
 cargo run -p mindmap_api --example dev_server           # UI at http://127.0.0.1:5173
 cargo run -p mindmap_io --example sample -- out.svg     # render a sample map
 ```
@@ -54,8 +65,8 @@ re-parents it. Wheel zooms, dragging the background pans.
 
 ## Known limits
 
-* Text width is estimated (about 0.56 em per character), so very wide or narrow
-  fonts can leave slightly loose frames. Real font measurement is the next
-  layout task.
+* Text width is estimated from a per font average (measured in a browser, plus
+  headroom), so frames can be slightly loose or tight with unusual text such as
+  all capitals. Measuring each label for real is a later layout task.
 * The Tauri shell is written but has only been built in CI, not on the machine
   that authored it.

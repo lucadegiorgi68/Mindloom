@@ -7,7 +7,7 @@ const V_GAP: f32 = 14.0;
 
 /// Rough text measurement. The frontend can replace this later with real
 /// font metrics through `layout_with`.
-pub fn estimate_size(text: &str, font_size: f32, framed: bool) -> (f32, f32) {
+pub fn estimate_size(text: &str, font: &str, font_size: f32, framed: bool) -> (f32, f32) {
     let lines: Vec<&str> = if text.is_empty() {
         vec![""]
     } else {
@@ -20,23 +20,25 @@ pub fn estimate_size(text: &str, font_size: f32, framed: bool) -> (f32, f32) {
         .unwrap_or(0)
         .max(2);
     let pad = if framed { 36.0 } else { 14.0 };
-    let w = longest as f32 * font_size * 0.56 + pad;
+    let w = longest as f32 * font_size * crate::fonts::resolve(font).width + pad;
     let h = lines.len() as f32 * font_size * 1.3 + pad * 0.8;
     (w, h)
 }
 
+/// Measures a label: (text, font name, font size, framed) to (width, height).
+pub type Measure<'a> = &'a dyn Fn(&str, &str, f32, bool) -> (f32, f32);
+
 pub fn layout(map: &MindMap) -> BTreeMap<NodeId, Rect> {
-    layout_with(map, &|text, size, framed| estimate_size(text, size, framed))
+    layout_with(map, &|text, font, size, framed| {
+        estimate_size(text, font, size, framed)
+    })
 }
 
-pub fn layout_with(
-    map: &MindMap,
-    measure: &dyn Fn(&str, f32, bool) -> (f32, f32),
-) -> BTreeMap<NodeId, Rect> {
+pub fn layout_with(map: &MindMap, measure: Measure) -> BTreeMap<NodeId, Rect> {
     let mut sizes = BTreeMap::new();
     for (id, n) in &map.nodes {
         let framed = n.shape != crate::model::Shape::None;
-        sizes.insert(*id, measure(&n.text, n.font_size, framed));
+        sizes.insert(*id, measure(&n.text, &n.font, n.font_size, framed));
     }
     let mut out = BTreeMap::new();
     let (rw, rh) = sizes[&map.root];

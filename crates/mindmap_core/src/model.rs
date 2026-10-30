@@ -46,6 +46,13 @@ pub struct Node {
     pub bold: bool,
     pub italic: bool,
     pub font_size: f32,
+    /// Font name from the catalogue in `fonts`. Older files lack it.
+    #[serde(default = "default_font")]
+    pub font: String,
+}
+
+fn default_font() -> String {
+    crate::fonts::DEFAULT_FONT.to_string()
 }
 
 impl Node {
@@ -65,6 +72,7 @@ impl Node {
             bold: false,
             italic: false,
             font_size: 20.0,
+            font: default_font(),
         }
     }
 }
@@ -148,6 +156,8 @@ impl MindMap {
         let id = self.next_id;
         self.next_id += 1;
         let mut n = Node::new(id, text, Some(parent), side);
+        // New branches inherit their parent's typeface.
+        n.font = self.nodes[&parent].font.clone();
         if is_root {
             // Each main branch gets its own colour from the palette.
             n.color = Some(PALETTE[(p.children.len()) % PALETTE.len()].to_string());
@@ -162,7 +172,10 @@ impl MindMap {
         let new = self.add_child(parent, text)?;
         // Insert right after `id`, and keep on the same side.
         let side = self.nodes[&id].side;
-        self.nodes.get_mut(&new)?.side = side;
+        let font = self.nodes[&id].font.clone();
+        let node = self.nodes.get_mut(&new)?;
+        node.side = side;
+        node.font = font;
         let kids = &mut self.nodes.get_mut(&parent)?.children;
         kids.pop();
         let pos = kids.iter().position(|c| *c == id)? + 1;

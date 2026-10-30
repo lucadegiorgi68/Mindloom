@@ -14,6 +14,9 @@ pub struct SceneNode {
     pub shape: Shape,
     pub color: String,
     pub font_size: f32,
+    /// CSS font-family stack for this node.
+    pub font_stack: String,
+    pub font: String,
     pub bold: bool,
     pub italic: bool,
     pub collapsed: bool,
@@ -77,6 +80,8 @@ pub fn build_scene(map: &MindMap) -> Scene {
             shape: n.shape,
             color: color.clone(),
             font_size: n.font_size,
+            font_stack: crate::fonts::resolve(&n.font).stack.to_string(),
+            font: crate::fonts::resolve(&n.font).name.to_string(),
             bold: n.bold,
             italic: n.italic,
             collapsed: n.collapsed,

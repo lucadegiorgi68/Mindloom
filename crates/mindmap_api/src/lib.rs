@@ -37,6 +37,11 @@ impl Session {
             "nodes": self.doc.map.nodes.values().map(|n| json!({
                 "id": n.id, "bold": n.bold, "italic": n.italic,
                 "font_size": n.font_size, "shape": n.shape,
+                "font": mindmap_core::fonts::resolve(&n.font).name,
+            })).collect::<Vec<_>>(),
+            "fonts": mindmap_core::fonts::FONTS.iter().map(|f| json!({
+                "name": f.name, "stack": f.stack,
+                "files": f.files.iter().map(|(w, file)| json!({"weight": w, "file": file})).collect::<Vec<_>>(),
             })).collect::<Vec<_>>(),
         })
     }
@@ -126,9 +131,18 @@ impl Session {
             }
             "set_format" => {
                 let i = id(a, "id")?;
+                let font = a.get("font").and_then(Value::as_str);
+                if let Some(f) = font {
+                    if mindmap_core::fonts::find(f).is_none() {
+                        return Err(format!("unknown font '{f}'"));
+                    }
+                }
                 self.doc
                     .edit(|m| {
                         let n = m.nodes.get_mut(&i)?;
+                        if let Some(f) = font {
+                            n.font = f.to_string();
+                        }
                         if let Some(b) = a.get("bold").and_then(Value::as_bool) {
                             n.bold = b;
                         }

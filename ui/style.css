@@ -54,3 +54,5 @@ button.on { background: rgba(26, 140, 255, 0.2); color: var(--accent); }
 #shapes button.on { background: rgba(26, 140, 255, 0.2); }
 #shapes button.on svg { stroke: var(--accent); }
 #shapes button.on svg text { fill: var(--accent); }
+#f-font { max-width: 150px; font-size: 14px; border: 1px solid var(--line); background: var(--bar); margin-right: 2px; }
+#f-font option { font-size: 16px; }

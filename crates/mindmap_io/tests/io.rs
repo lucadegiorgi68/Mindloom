@@ -52,3 +52,24 @@ fn opml_roundtrip_preserves_structure() {
 fn opml_rejects_garbage() {
     assert!(from_opml("hello").is_err());
 }
+
+#[test]
+fn svg_embeds_only_the_fonts_the_map_uses() {
+    let mut m = MindMap::new("Root");
+    let a = m.add_child(1, "Hello").unwrap();
+    m.nodes.get_mut(&a).unwrap().font = "Caveat".into();
+    let svg = to_svg(&m);
+    assert!(svg.contains("font-family:'Caveat'"));
+    assert!(svg.contains("font-family:'Open Sans'"));
+    assert!(!svg.contains("font-family:'Pacifico'"));
+    assert!(svg.contains("data:font/woff2;base64,"));
+    assert!(svg.contains("font-family=\"'Caveat', 'Segoe Print', cursive\""));
+}
+
+#[test]
+fn svg_embeds_bold_weight_only_when_used() {
+    let mut m = MindMap::new("Root");
+    assert!(!to_svg(&m).contains("font-weight:700"));
+    m.nodes.get_mut(&1).unwrap().bold = true;
+    assert!(to_svg(&m).contains("font-weight:700"));
+}

@@ -228,3 +228,51 @@ fn bubble_and_cloud_both_emit_a_shape_path() {
             .is_some_and(|p| p.starts_with('M') && p.ends_with('Z')));
     }
 }
+
+#[test]
+fn files_saved_before_fonts_existed_still_load() {
+    let m = sample();
+    let mut v = serde_json::to_value(&m).unwrap();
+    for n in v["nodes"].as_object_mut().unwrap().values_mut() {
+        n.as_object_mut().unwrap().remove("font");
+    }
+    let back: MindMap = serde_json::from_value(v).unwrap();
+    assert!(back.nodes.values().all(|n| n.font == fonts::DEFAULT_FONT));
+}
+
+#[test]
+fn new_branches_inherit_parent_font_and_siblings_copy_theirs() {
+    let mut m = MindMap::new("Root");
+    let a = m.add_child(1, "A").unwrap();
+    m.nodes.get_mut(&a).unwrap().font = "Caveat".into();
+    let a1 = m.add_child(a, "A1").unwrap();
+    assert_eq!(m.nodes[&a1].font, "Caveat");
+    m.nodes.get_mut(&a1).unwrap().font = "Lora".into();
+    let sib = m.add_sibling(a1, "A2").unwrap();
+    assert_eq!(m.nodes[&sib].font, "Lora");
+}
+
+#[test]
+fn every_catalogue_font_resolves_and_unknown_falls_back() {
+    for f in fonts::FONTS {
+        assert_eq!(fonts::resolve(f.name).name, f.name);
+        assert!(!f.files.is_empty() && f.width > 0.2 && f.width < 0.9);
+    }
+    assert_eq!(fonts::resolve("Comic Nonsense").name, fonts::DEFAULT_FONT);
+    let mut m = MindMap::new("Root");
+    m.nodes.get_mut(&1).unwrap().font = "Comic Nonsense".into();
+    let s = build_scene(&m);
+    assert_eq!(s.nodes[0].font, fonts::DEFAULT_FONT);
+}
+
+#[test]
+fn layout_width_depends_on_the_font() {
+    let width = |font: &str| {
+        let mut m = MindMap::new("Root");
+        let a = m.add_child(1, "Electromagnetic force").unwrap();
+        m.nodes.get_mut(&a).unwrap().font = font.into();
+        layout::layout(&m)[&a].w
+    };
+    assert!(width("Caveat") < width("Open Sans"));
+    assert!(width("Open Sans") < width("Montserrat"));
+}
