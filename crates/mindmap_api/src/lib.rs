@@ -37,6 +37,7 @@ impl Session {
             "can_undo": self.doc.can_undo(),
             "can_redo": self.doc.can_redo(),
             "root": self.doc.map.root,
+            "roots": self.doc.map.roots(),
             "title": self.doc.map.nodes[&self.doc.map.root].text,
             "nodes": self.doc.map.nodes.values().map(|n| json!({
                 "id": n.id, "bold": n.bold, "italic": n.italic,
@@ -61,6 +62,15 @@ impl Session {
                     .doc
                     .edit(|m| m.add_child(p, text(a, "text").unwrap_or("")))
                     .ok_or("cannot add child")?;
+                let mut s = self.state();
+                s["new_id"] = json!(new);
+                return Ok(s);
+            }
+            "add_central_idea" => {
+                let new = self
+                    .doc
+                    .edit(|m| Some(m.add_central_idea(text(a, "text").unwrap_or("Central idea"))))
+                    .ok_or("cannot add a central idea")?;
                 let mut s = self.state();
                 s["new_id"] = json!(new);
                 return Ok(s);

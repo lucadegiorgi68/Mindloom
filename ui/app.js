@@ -88,15 +88,14 @@ function render() {
     }
   }
   drawLinks();
-  const rootRect = nodeById(S.root).rect;
-  for (const n of S.scene.nodes) drawNode(n, rootRect);
-  drawSelection(rootRect);
+  for (const n of S.scene.nodes) drawNode(n);
+  drawSelection();
   drawLinkHandles();
   updateFormatBar();
   updateLinkBar();
 }
 
-function drawNode(n, rootRect) {
+function drawNode(n) {
   const r = n.rect;
   const g = el('g', { 'data-id': n.id }, world);
   el('rect', { x: r.cx - r.w / 2 - 4, y: r.cy - r.h / 2 - 4, width: r.w + 8, height: r.h + 8, class: 'hit',
@@ -120,7 +119,7 @@ function drawNode(n, rootRect) {
     t.textContent = line;
   });
   if (n.collapsed && n.has_children) {
-    const left = r.cx < rootRect.cx;
+    const left = n.side === 'Left';
     const fx = left ? r.cx - r.w / 2 - 14 : r.cx + r.w / 2 + 14;
     const f = el('g', { class: 'fold' }, g);
     el('circle', { cx: fx, cy: r.cy, r: 9 }, f);
@@ -129,15 +128,15 @@ function drawNode(n, rootRect) {
   }
 }
 
-function drawSelection(rootRect) {
+function drawSelection() {
   if (sel === null) return;
   const n = nodeById(sel);
   if (!n) return;
   const r = n.rect;
   el('rect', { class: 'sel', x: r.cx - r.w / 2 - 6, y: r.cy - r.h / 2 - 6, width: r.w + 12, height: r.h + 12,
     rx: 12 }, world);
-  const isRoot = sel === S.root;
-  const sides = isRoot ? [-1, 1] : [r.cx < rootRect.cx ? -1 : 1];
+  // A central idea (the first or a later one) grows branches on both sides.
+  const sides = n.central ? [-1, 1] : [n.side === 'Left' ? -1 : 1];
   for (const d of sides) {
     const g = el('g', { class: 'plus', 'data-plus': sel }, world);
     el('circle', { cx: r.cx + d * (r.w / 2 + 22), cy: r.cy, r: 11, 'data-plus': sel }, g);
@@ -550,7 +549,7 @@ editor.addEventListener('keydown', (e) => {
     startPendingEdit(async () => {
       const id = await done;
       if (id == null) return null;
-      return id === S.root ? act('add_child', { parent: id, text: '' }) : act('add_sibling', { id, text: '' });
+      return isCentral(id) ? act('add_child', { parent: id, text: '' }) : act('add_sibling', { id, text: '' });
     });
   } else if (e.key === 'Tab') {
     e.preventDefault();
@@ -566,8 +565,22 @@ editor.addEventListener('blur', () => { if (editing && !editing.pending) commitE
 function addChild(parent) {
   return startPendingEdit(() => act('add_child', { parent, text: '' }));
 }
+const isCentral = (id) => !!nodeById(id)?.central;
+
+// Starts another central idea: a new tree on the same map, with its own colour.
+// Pending, like a new branch: Esc or an empty name removes it again.
+async function addCentralIdea() {
+  const st = await act('add_central_idea', { text: 'Central idea' });
+  if (!st) return;
+  const r = nodeById(st.new_id).rect;
+  view.x = innerWidth / 2 - r.cx * view.k;
+  view.y = innerHeight / 2 - r.cy * view.k;
+  applyView();
+  startEdit(st.new_id, true);
+}
+
 function addSibling(id) {
-  if (id === S.root) return addChild(id);
+  if (isCentral(id)) return addChild(id);
   return startPendingEdit(() => act('add_sibling', { id, text: '' }));
 }
 
@@ -632,6 +645,7 @@ $('b-undo').onclick = () => act('undo');
 $('b-redo').onclick = () => act('redo');
 $('b-child').onclick = () => addChild(sel ?? S.root);
 $('b-sibling').onclick = () => sel !== null && addSibling(sel);
+$('b-central').onclick = addCentralIdea;
 $('b-delete').onclick = () => sel !== null && act('delete', { id: sel });
 $('b-fold').onclick = () => sel !== null && act('toggle_collapse', { id: sel });
 $('b-link').onclick = startLink;
@@ -651,6 +665,7 @@ addEventListener('keydown', (e) => {
   else if (mod && e.key === '0') { e.preventDefault(); fit(); }
   else if (e.key === 'Escape') { if (linkMode) setLinkMode(false); else { sel = null; selLink = null; render(); } }
   else if (selLink !== null && (e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); act('delete_link', { id: selLink }); }
+  else if (!mod && !e.altKey && e.key.toLowerCase() === 'c') { e.preventDefault(); addCentralIdea(); }
   else if (sel === null) return;
   else if (e.key === 'l' || e.key === 'L') { e.preventDefault(); startLink(); }
   else if (e.key === 'Tab') { e.preventDefault(); addChild(sel); }

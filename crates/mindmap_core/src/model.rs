@@ -119,11 +119,19 @@ pub struct MindMap {
     /// Relations between nodes. Older files lack this.
     #[serde(default)]
     pub links: Vec<Link>,
+    /// Further central ideas, each the root of its own tree. `root` stays the
+    /// first one (it names the map and cannot be deleted). Older files lack this.
+    #[serde(default)]
+    pub extra_roots: Vec<NodeId>,
 }
 
 pub const PALETTE: [&str; 8] = [
     "#ff6b6b", "#ffa500", "#f5c400", "#7bd44a", "#19c3c3", "#2f9bff", "#9b6bff", "#ee6fd0",
 ];
+
+/// Frame colours handed out to second, third... central ideas, so each one
+/// reads as its own centre next to the first (which is "#00b4f0").
+pub const CENTRAL_COLORS: [&str; 5] = ["#8e5cf7", "#1fa971", "#ff7a1a", "#e5389b", "#4a6cf7"];
 
 impl MindMap {
     pub fn new(title: &str) -> Self {
@@ -140,11 +148,38 @@ impl MindMap {
             dark_mode: false,
             auto_layout: true,
             links: vec![],
+            extra_roots: vec![],
         }
     }
 
     pub fn get(&self, id: NodeId) -> Option<&Node> {
         self.nodes.get(&id)
+    }
+
+    /// Every central idea, the first one leading.
+    pub fn roots(&self) -> Vec<NodeId> {
+        std::iter::once(self.root)
+            .chain(self.extra_roots.iter().copied())
+            .collect()
+    }
+
+    /// True for any central idea, the first or a later one.
+    pub fn is_central(&self, id: NodeId) -> bool {
+        self.nodes.get(&id).is_some_and(|n| n.parent.is_none())
+    }
+
+    /// Adds another central idea: a parentless node that starts its own tree,
+    /// framed like the first one but in its own colour.
+    pub fn add_central_idea(&mut self, text: &str) -> NodeId {
+        let id = self.next_id;
+        self.next_id += 1;
+        let mut n = Node::new(id, text, None, Side::Right);
+        n.shape = Shape::Marker;
+        n.font_size = 30.0;
+        n.color = Some(CENTRAL_COLORS[self.extra_roots.len() % CENTRAL_COLORS.len()].to_string());
+        self.nodes.insert(id, n);
+        self.extra_roots.push(id);
+        id
     }
 
     pub fn depth(&self, mut id: NodeId) -> usize {
@@ -226,17 +261,20 @@ impl MindMap {
             .is_some()
     }
 
-    /// Deletes a node and its whole subtree. The root cannot be deleted.
+    /// Deletes a node and its whole subtree. The first central idea cannot be
+    /// deleted; any later one can, together with its tree.
     pub fn delete(&mut self, id: NodeId) -> bool {
         if id == self.root || !self.nodes.contains_key(&id) {
             return false;
         }
-        if let Some(p) = self.nodes[&id].parent {
-            self.nodes
+        match self.nodes[&id].parent {
+            Some(p) => self
+                .nodes
                 .get_mut(&p)
                 .unwrap()
                 .children
-                .retain(|c| *c != id);
+                .retain(|c| *c != id),
+            None => self.extra_roots.retain(|r| *r != id),
         }
         let mut stack = vec![id];
         while let Some(n) = stack.pop() {
@@ -262,9 +300,9 @@ impl MindMap {
         false
     }
 
-    /// Moves `id` under `new_parent`. Refuses cycles and moving the root.
+    /// Moves `id` under `new_parent`. Refuses cycles and moving any central idea.
     pub fn reparent(&mut self, id: NodeId, new_parent: NodeId) -> bool {
-        if id == self.root
+        if !self.nodes.get(&id).is_some_and(|n| n.parent.is_some())
             || !self.nodes.contains_key(&new_parent)
             || self.is_descendant(new_parent, id)
         {
@@ -277,7 +315,7 @@ impl MindMap {
             .children
             .retain(|c| *c != id);
         self.nodes.get_mut(&new_parent).unwrap().children.push(id);
-        let new_side = if new_parent == self.root {
+        let new_side = if self.is_central(new_parent) {
             let right = self.nodes[&new_parent]
                 .children
                 .iter()
@@ -301,7 +339,7 @@ impl MindMap {
         // branch it simply inherits; directly under the central idea it
         // becomes a main branch with the next free palette colour.
         self.clear_colors(id);
-        if new_parent == self.root {
+        if self.is_central(new_parent) {
             let slot = self.nodes[&new_parent].children.len() - 1;
             self.nodes.get_mut(&id).unwrap().color =
                 Some(PALETTE[slot % PALETTE.len()].to_string());
@@ -396,7 +434,8 @@ impl MindMap {
         self.links.len() != before
     }
 
-    /// Plain text outline, depth first, used by export and tests.
+    /// Plain text outline, depth first, used by export and tests. Each central
+    /// idea starts a new tree at depth 0.
     pub fn visit_depth_first(&self, mut f: impl FnMut(&Node, usize)) {
         fn go(m: &MindMap, id: NodeId, d: usize, f: &mut dyn FnMut(&Node, usize)) {
             let n = &m.nodes[&id];
@@ -405,6 +444,8 @@ impl MindMap {
                 go(m, *c, d + 1, f);
             }
         }
-        go(self, self.root, 0, &mut f);
+        for r in self.roots() {
+            go(self, r, 0, &mut f);
+        }
     }
 }

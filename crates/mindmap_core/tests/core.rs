@@ -530,3 +530,102 @@ fn scene_link_exposes_handle_geometry() {
     let dist = ((l.cb.x - l.ca.x).powi(2) + (l.cb.y - l.ca.y).powi(2)).sqrt();
     assert!((off / dist - 0.75 * 0.5).abs() < 0.05, "midpoint sits 0.75 * bend away");
 }
+
+#[test]
+fn second_central_idea_starts_its_own_tree() {
+    let mut m = sample();
+    let c = m.add_central_idea("Second");
+    assert_eq!(m.roots(), vec![1, c]);
+    assert!(m.is_central(c) && m.is_central(1));
+    let n = &m.nodes[&c];
+    assert_eq!(n.parent, None);
+    assert_eq!(n.shape, Shape::Marker);
+    assert_ne!(m.color_of(c), m.color_of(1));
+    // It takes children like the first one, balanced over both sides.
+    let k1 = m.add_child(c, "x").unwrap();
+    let k2 = m.add_child(c, "y").unwrap();
+    assert_ne!(m.nodes[&k1].side, m.nodes[&k2].side);
+    assert_ne!(m.color_of(k1), m.color_of(k2));
+    // A central idea has no siblings and cannot be moved under another node.
+    assert!(m.add_sibling(c, "z").is_none());
+    assert!(!m.reparent(c, 1));
+    // But branches can move between the two trees and adopt the new colour.
+    let a = m.nodes[&1].children[0];
+    assert!(m.reparent(a, c));
+    assert_eq!(m.nodes[&a].parent, Some(c));
+    assert!(m.nodes[&1].children.iter().all(|x| *x != a));
+}
+
+#[test]
+fn first_central_idea_stays_but_later_ones_can_be_deleted() {
+    let mut m = sample();
+    let c = m.add_central_idea("Second");
+    let k = m.add_child(c, "x").unwrap();
+    let total = m.nodes.len();
+    m.add_link(k, 1).unwrap();
+    assert!(!m.delete(1));
+    assert!(m.delete(c));
+    assert_eq!(m.roots(), vec![1]);
+    assert_eq!(m.nodes.len(), total - 2);
+    assert!(m.links.is_empty(), "links to a deleted tree go with it");
+}
+
+#[test]
+fn central_ideas_never_overlap_and_dragging_one_leaves_the_rest() {
+    let mut m = sample();
+    let c = m.add_central_idea("Second");
+    for i in 0..4 {
+        m.add_child(c, &format!("k{i}")).unwrap();
+    }
+    let rects = layout::layout(&m);
+    let in_tree = |root: NodeId| -> Vec<Rect> {
+        let mut out = vec![];
+        m.visit_depth_first(|n, _| {
+            if n.id == root || m.is_descendant(n.id, root) {
+                out.push(rects[&n.id]);
+            }
+        });
+        out
+    };
+    let first = in_tree(1);
+    let second = in_tree(c);
+    let first_bottom = first.iter().map(|r| r.bottom()).fold(f32::MIN, f32::max);
+    let second_top = second.iter().map(|r| r.top()).fold(f32::MAX, f32::min);
+    assert!(second_top > first_bottom, "second tree sits below the first");
+    assert_eq!(rects[&1].cx, 0.0);
+    assert_eq!(rects[&1].cy, 0.0);
+    // Dragging the second central idea moves its tree and nothing else.
+    let before = rects.clone();
+    m.nodes.get_mut(&c).unwrap().dx = 250.0;
+    m.nodes.get_mut(&c).unwrap().dy = -60.0;
+    let after = layout::layout(&m);
+    for id in m.nodes.keys() {
+        let (b, a) = (before[id], after[id]);
+        if *id == c || m.is_descendant(*id, c) {
+            assert!((a.cx - b.cx - 250.0).abs() < 0.01 && (a.cy - b.cy + 60.0).abs() < 0.01);
+        } else {
+            assert_eq!((a.cx, a.cy), (b.cx, b.cy));
+        }
+    }
+}
+
+#[test]
+fn scene_draws_every_central_idea_with_its_branches() {
+    let mut m = sample();
+    let c = m.add_central_idea("Second");
+    m.add_child(c, "x").unwrap();
+    let s = build_scene(&m);
+    assert_eq!(s.nodes.len(), 8);
+    assert_eq!(s.nodes.iter().filter(|n| n.central).count(), 2);
+    assert_eq!(s.branches.len(), 6);
+    assert!(s.nodes.iter().any(|n| n.id == c && n.central));
+}
+
+#[test]
+fn old_files_without_extra_roots_still_load() {
+    let json = serde_json::to_string(&sample()).unwrap();
+    let mut v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    v.as_object_mut().unwrap().remove("extra_roots");
+    let m: MindMap = serde_json::from_value(v).unwrap();
+    assert_eq!(m.roots(), vec![1]);
+}

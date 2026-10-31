@@ -4,6 +4,8 @@ use std::collections::BTreeMap;
 
 const H_GAP: f32 = 70.0;
 const V_GAP: f32 = 14.0;
+/// Empty space between the trees of two central ideas.
+const TREE_GAP: f32 = 140.0;
 
 /// Rough text measurement. The frontend can replace this later with real
 /// font metrics through `layout_with`.
@@ -41,21 +43,38 @@ pub fn layout_with(map: &MindMap, measure: Measure) -> BTreeMap<NodeId, Rect> {
         sizes.insert(*id, measure(&n.text, &n.font, n.font_size, framed));
     }
     let mut out = BTreeMap::new();
-    let (rw, rh) = sizes[&map.root];
-    out.insert(
-        map.root,
-        Rect {
-            cx: 0.0,
-            cy: 0.0,
-            w: rw,
-            h: rh,
-        },
-    );
-    for side in [Side::Right, Side::Left] {
-        place_children(map, map.root, side, &sizes, &mut out);
+    // Where the next central idea's tree may start: the bottom of the trees
+    // above it, measured without their own manual offset, so dragging one
+    // central idea never shoves the others.
+    let mut cursor = 0.0_f32;
+    for (i, root) in map.roots().into_iter().enumerate() {
+        let mut tree = BTreeMap::new();
+        let (rw, rh) = sizes[&root];
+        tree.insert(
+            root,
+            Rect {
+                cx: 0.0,
+                cy: 0.0,
+                w: rw,
+                h: rh,
+            },
+        );
+        for side in [Side::Right, Side::Left] {
+            place_children(map, root, side, &sizes, &mut tree);
+        }
+        // Manual offsets are applied top down so they carry the whole subtree.
+        apply_offsets(map, root, 0.0, 0.0, &mut tree);
+        let rdy = map.nodes[&root].dy;
+        let top = tree.values().map(|r| r.top()).fold(f32::MAX, f32::min) - rdy;
+        let bottom = tree.values().map(|r| r.bottom()).fold(f32::MIN, f32::max) - rdy;
+        // The first tree stays centred on the origin; later ones stack below.
+        let ty = if i == 0 { 0.0 } else { cursor + TREE_GAP - top };
+        for r in tree.values_mut() {
+            r.cy += ty;
+        }
+        cursor = bottom + ty;
+        out.extend(tree);
     }
-    // Manual offsets are applied top down so they carry the whole subtree.
-    apply_offsets(map, map.root, 0.0, 0.0, &mut out);
     out
 }
 

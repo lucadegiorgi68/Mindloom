@@ -69,7 +69,7 @@ tauri build
 
 ## Shortcuts
 
-Tab add branch, Enter add sibling, F2 or double click edit, Delete remove,
+Tab add branch, Enter add sibling, C add a second central idea, F2 or double click edit, Delete remove,
 Space fold, Ctrl or Cmd Z / Y undo and redo, S save, O open, N new, 0 fit.
 Drag a node to move it with its subtree. Shift plus drop on another node
 re-parents it. Wheel zooms, dragging the background pans.

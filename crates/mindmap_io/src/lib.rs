@@ -234,10 +234,17 @@ pub fn to_markdown(map: &MindMap) -> String {
 pub fn to_opml(map: &MindMap) -> String {
     fn go(map: &MindMap, id: u64, out: &mut String) {
         let n = &map.nodes[&id];
-        if n.children.is_empty() {
-            let _ = write!(out, "<outline text=\"{}\"/>", esc(&n.text));
+        // Later central ideas carry a marker so import can tell them from
+        // plain top level outlines (OPML allows custom attributes).
+        let mark = if map.extra_roots.contains(&id) {
+            " _mindloom=\"central\""
         } else {
-            let _ = write!(out, "<outline text=\"{}\">", esc(&n.text));
+            ""
+        };
+        if n.children.is_empty() {
+            let _ = write!(out, "<outline text=\"{}\"{mark}/>", esc(&n.text));
+        } else {
+            let _ = write!(out, "<outline text=\"{}\"{mark}>", esc(&n.text));
             for c in &n.children {
                 go(map, *c, out);
             }
@@ -245,7 +252,10 @@ pub fn to_opml(map: &MindMap) -> String {
         }
     }
     let mut body = String::new();
-    go(map, map.root, &mut body);
+    // Every central idea becomes a top level outline.
+    for r in map.roots() {
+        go(map, r, &mut body);
+    }
     format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?><opml version=\"2.0\"><head><title>{}</title></head><body>{}</body></opml>",
         esc(&map.nodes[&map.root].text),
@@ -294,6 +304,11 @@ pub fn from_opml(xml: &str) -> Result<MindMap, String> {
                     root
                 }
                 (Some(m), Some(p)) => m.add_child(*p, &text).ok_or("bad parent")?,
+                // A marked top level outline is another central idea; any other
+                // one (typical outliner files) becomes a branch of the first.
+                (Some(m), None) if tag.contains(" _mindloom=\"central\"") => {
+                    m.add_central_idea(&text)
+                }
                 (Some(m), None) => m.add_child(m.root, &text).ok_or("bad parent")?,
             };
             if !self_close {

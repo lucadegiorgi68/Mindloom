@@ -211,3 +211,40 @@ fn set_link_bends_and_reconnects() {
     let st = s.invoke("state", &json!({})).unwrap();
     assert_eq!(st["scene"]["links"][0]["to"].as_u64().unwrap(), b);
 }
+
+#[test]
+fn add_central_idea_command_with_undo_and_delete() {
+    let mut s = Session::new("Root");
+    let r = s.invoke("add_central_idea", &json!({})).unwrap();
+    let c = r["new_id"].as_u64().unwrap();
+    assert_eq!(r["roots"], json!([1, c]));
+    let n = r["scene"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["id"] == c)
+        .unwrap()
+        .clone();
+    assert_eq!(n["text"], "Central idea");
+    assert_eq!(n["central"], true);
+    // Children can hang off it.
+    let k = s
+        .invoke("add_child", &json!({"parent": c, "text": "A"}))
+        .unwrap();
+    assert_eq!(k["scene"]["nodes"].as_array().unwrap().len(), 3);
+    // The title still comes from the first central idea.
+    assert_eq!(k["title"], "Root");
+    // The first one is protected, the second one is not.
+    assert!(s.invoke("delete", &json!({"id": 1})).is_err());
+    let d = s.invoke("delete", &json!({"id": c})).unwrap();
+    assert_eq!(d["roots"], json!([1]));
+    let u = s.invoke("undo", &json!({})).unwrap();
+    assert_eq!(u["roots"], json!([1, c]));
+    // It survives a save and open round trip.
+    let saved = s.invoke("save_json", &json!({})).unwrap();
+    let mut t = Session::new("Other");
+    let l = t
+        .invoke("load_json", &json!({"json": saved["data"]}))
+        .unwrap();
+    assert_eq!(l["roots"], json!([1, c]));
+}

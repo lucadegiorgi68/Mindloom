@@ -46,6 +46,7 @@ duplicate, delete.
 | Links between nodes: solid or dashed, arrow at none, end, start or both ends, colour, follow nodes, drag to bend, drag ends to reattach, SVG export | done |
 | Per node font choice (7 bundled fonts), shape picker with cloud, bubble, box, marker | done |
 | Dark mode, auto layout, clean up, fit view, pan and zoom | done |
+| Second and further central ideas: own tree, own colour, drag, link, delete, all exports | done |
 | Save and open (.mindloom), export SVG, Markdown, OPML, import OPML | done |
 | Branch styles beyond tapered, dotted, straight; control points | next |
 | Underline, alignment, images, notes, task check marks, branch labels | next |

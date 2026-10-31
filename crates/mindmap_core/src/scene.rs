@@ -28,6 +28,10 @@ pub struct SceneNode {
     pub text_baseline: f32,
     /// SVG path data relative to the node centre (Cloud and Bubble shapes).
     pub shape_path: Option<String>,
+    /// True for every central idea (a node with no parent).
+    pub central: bool,
+    /// Which side of its central idea the node hangs on.
+    pub side: Side,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -127,6 +131,8 @@ pub fn build_scene(map: &MindMap) -> Scene {
                 Shape::Bubble => Some(organic::bubble_path(r.w, r.h)),
                 _ => None,
             },
+            central: n.parent.is_none(),
+            side: n.side,
         });
         if n.collapsed {
             return;
@@ -183,7 +189,9 @@ pub fn build_scene(map: &MindMap) -> Scene {
             walk(map, *c, rects, nodes, branches);
         }
     }
-    walk(map, map.root, &rects, &mut nodes, &mut branches);
+    for root in map.roots() {
+        walk(map, root, &rects, &mut nodes, &mut branches);
+    }
 
     let links = build_links(map, &rects);
 

@@ -100,3 +100,37 @@ fn json_roundtrip_keeps_links() {
     m.add_link(a, 1).unwrap();
     assert_eq!(from_json(&to_json(&m)).unwrap().links.len(), 1);
 }
+
+#[test]
+fn second_central_idea_is_exported_everywhere() {
+    let mut m = sample();
+    let c = m.add_central_idea("Second centre");
+    m.add_child(c, "Leaf").unwrap();
+    let md = to_markdown(&m);
+    assert!(md.contains("# Second centre"));
+    assert!(md.contains("* Leaf"));
+    let opml = to_opml(&m);
+    assert!(opml.contains("Second centre") && opml.contains("Leaf"));
+    assert!(to_svg(&m).contains("Second centre"));
+    // JSON keeps it.
+    let back = from_json(&to_json(&m)).unwrap();
+    assert_eq!(back.roots(), m.roots());
+}
+
+#[test]
+fn opml_roundtrip_keeps_extra_central_ideas_and_plain_outlines_stay_branches() {
+    let mut m = sample();
+    let c = m.add_central_idea("Second & <centre>");
+    let k = m.add_child(c, "Leaf").unwrap();
+    m.add_child(k, "Deep").unwrap();
+    m.add_central_idea("Third");
+    let back = from_opml(&to_opml(&m)).unwrap();
+    assert_eq!(back.roots().len(), 3);
+    assert_eq!(to_markdown(&back), to_markdown(&m));
+    // Unmarked extra top level outlines (ordinary outliner files) still
+    // become branches of the first central idea.
+    let plain = "<opml version=\"2.0\"><body><outline text=\"One\"/><outline text=\"Two\"/></body></opml>";
+    let m2 = from_opml(plain).unwrap();
+    assert_eq!(m2.roots().len(), 1);
+    assert_eq!(m2.nodes[&m2.root].children.len(), 1);
+}
