@@ -10,6 +10,8 @@ pub struct LinkGeom {
     pub arrow_end: Vec<Pt>,
     /// Arrowhead polygon at the source end.
     pub arrow_start: Vec<Pt>,
+    /// Point of the curve halfway along, where the bend handle sits.
+    pub mid: Pt,
 }
 
 fn cubic(p0: Pt, p1: Pt, p2: Pt, p3: Pt, t: f32) -> Pt {
@@ -142,5 +144,6 @@ pub fn link_geometry(
         points: trim(&pts, cut_s, cut_e),
         arrow_end,
         arrow_start,
+        mid: cubic(p0, c1, c2, p3, 0.5),
     })
 }

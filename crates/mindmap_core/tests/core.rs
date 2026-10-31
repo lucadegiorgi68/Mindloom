@@ -488,3 +488,45 @@ fn a_pair_linked_both_ways_draws_two_distinct_curves() {
     assert_eq!(s.links.len(), 2);
     assert_ne!(s.links[0].path, s.links[1].path);
 }
+
+#[test]
+fn link_bend_is_clamped_and_unknown_links_refused() {
+    let (mut m, a, b) = two_far_nodes();
+    let id = m.add_link(a, b).unwrap();
+    assert!(m.set_link_bend(id, -0.4));
+    assert_eq!(m.links[0].bend, -0.4);
+    assert!(m.set_link_bend(id, 50.0));
+    assert_eq!(m.links[0].bend, 1.5);
+    assert!(!m.set_link_bend(id, f32::NAN));
+    assert!(!m.set_link_bend(999, 0.1));
+}
+
+#[test]
+fn reconnecting_a_link_validates_its_new_ends() {
+    let (mut m, a, b) = two_far_nodes();
+    let c = m.add_child(1, "Gamma").unwrap();
+    let l1 = m.add_link(a, b).unwrap();
+    let l2 = m.add_link(a, c).unwrap();
+    assert!(!m.reconnect_link(l1, a, a), "self link");
+    assert!(!m.reconnect_link(l1, a, 999), "unknown node");
+    assert!(!m.reconnect_link(l1, a, c), "would duplicate the other link");
+    assert!(m.reconnect_link(l1, a, b), "keeping its own ends is fine");
+    assert!(m.reconnect_link(l1, b, c));
+    assert_eq!((m.links[0].from, m.links[0].to), (b, c));
+    assert_eq!((m.links[1].id, m.links[1].to), (l2, c));
+}
+
+#[test]
+fn scene_link_exposes_handle_geometry() {
+    let (mut m, a, b) = two_far_nodes();
+    let id = m.add_link(a, b).unwrap();
+    m.set_link_bend(id, 0.5);
+    let s = mindmap_core::build_scene(&m);
+    let l = &s.links[0];
+    assert_eq!(l.bend, 0.5);
+    assert_ne!((l.ca.x, l.ca.y), (l.cb.x, l.cb.y));
+    let (mx, my) = ((l.ca.x + l.cb.x) / 2.0, (l.ca.y + l.cb.y) / 2.0);
+    let off = ((l.mid.x - mx).powi(2) + (l.mid.y - my).powi(2)).sqrt();
+    let dist = ((l.cb.x - l.ca.x).powi(2) + (l.cb.y - l.ca.y).powi(2)).sqrt();
+    assert!((off / dist - 0.75 * 0.5).abs() < 0.05, "midpoint sits 0.75 * bend away");
+}

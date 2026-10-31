@@ -55,6 +55,13 @@ pub struct SceneLink {
     /// Arrowhead polygons, empty when absent.
     pub arrow_end: Vec<Pt>,
     pub arrow_start: Vec<Pt>,
+    /// Current bow of the curve (fraction of its length), for the bend handle.
+    pub bend: f32,
+    /// Midpoint of the curve, where the bend handle sits.
+    pub mid: Pt,
+    /// Centres of the two visible nodes the link attaches to.
+    pub ca: Pt,
+    pub cb: Pt,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -265,6 +272,10 @@ fn build_links(map: &MindMap, rects: &std::collections::BTreeMap<NodeId, Rect>) 
             path,
             arrow_end: g.arrow_end,
             arrow_start: g.arrow_start,
+            bend: l.bend,
+            mid: g.mid,
+            ca: Pt::new(rects[&a].cx, rects[&a].cy),
+            cb: Pt::new(rects[&b].cx, rects[&b].cy),
         });
     }
     out

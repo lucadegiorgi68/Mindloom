@@ -91,6 +91,7 @@ function render() {
   const rootRect = nodeById(S.root).rect;
   for (const n of S.scene.nodes) drawNode(n, rootRect);
   drawSelection(rootRect);
+  drawLinkHandles();
   updateFormatBar();
   updateLinkBar();
 }
@@ -189,6 +190,40 @@ function drawLinks() {
   }
 }
 
+// Where a link visibly starts and ends (the arrow tip when there is one).
+function linkEnds(l) {
+  const nums = l.path.split(/[ML\s]+/).filter(Boolean).map(Number);
+  const first = { x: nums[0], y: nums[1] };
+  const last = { x: nums[nums.length - 2], y: nums[nums.length - 1] };
+  return {
+    start: l.arrow_start.length ? l.arrow_start[0] : first,
+    end: l.arrow_end.length ? l.arrow_end[0] : last,
+  };
+}
+// Bow of the curve for a pointer at world position w. The curve's midpoint
+// sits 0.75 * bend * length away from the straight line between the nodes.
+function bendFor(l, w) {
+  const dx = l.cb.x - l.ca.x, dy = l.cb.y - l.ca.y;
+  const dist = Math.hypot(dx, dy) || 1;
+  const nx = -dy / dist, ny = dx / dist;
+  const off = (w.x - (l.ca.x + l.cb.x) / 2) * nx + (w.y - (l.ca.y + l.cb.y) / 2) * ny;
+  return Math.max(-1.5, Math.min(1.5, off / (0.75 * dist)));
+}
+function drawLinkHandles() {
+  const l = selLink === null ? null : S.scene.links.find((x) => x.id === selLink);
+  if (!l || editing) return;
+  const { start, end } = linkEnds(l);
+  const g = el('g', { class: 'linkhandles' }, world);
+  const add = (which, p, cls) => el('circle', { class: 'lh ' + cls, cx: p.x, cy: p.y, r: 7, 'data-lh': which }, g);
+  add('from', start, 'lh-end');
+  add('to', end, 'lh-end');
+  add('bend', l.mid, 'lh-bend');
+}
+function nodeAt(w, skip) {
+  return S.scene.nodes.find((n) => n.id !== skip && Math.abs(w.x - n.rect.cx) < n.rect.w / 2 + 6 &&
+    Math.abs(w.y - n.rect.cy) < n.rect.h / 2 + 6);
+}
+
 const LINK_COLORS = ['#8a93a3', ...PALETTE];
 for (const c of LINK_COLORS) {
   const i = document.createElement('i');
@@ -284,8 +319,15 @@ svg.addEventListener('pointerdown', (e) => {
     if (hit) finishLink(Number(hit.getAttribute('data-id'))); else setLinkMode(false);
     return;
   }
+  const lh = e.target.closest('[data-lh]');
+  if (lh && selLink !== null) {
+    drag = { kind: 'link', which: lh.getAttribute('data-lh'), id: selLink, moved: false, sx: e.clientX, sy: e.clientY };
+    return;
+  }
   if (!hit && linkHit) {
+    // Pressing on the curve selects it, and dragging from there bends it.
     sel = null; selLink = Number(linkHit.getAttribute('data-link')); render();
+    drag = { kind: 'link', which: 'bend', id: selLink, moved: false, sx: e.clientX, sy: e.clientY };
     return;
   }
   selLink = null;
@@ -314,6 +356,11 @@ svg.addEventListener('pointerdown', (e) => {
 svg.addEventListener('pointermove', (e) => {
   if (!drag) return;
   const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+  if (drag.kind === 'link') {
+    if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
+    if (drag.moved) previewLinkDrag(drag, toWorld(e.clientX, e.clientY));
+    return;
+  }
   if (drag.kind === 'pan') {
     view.x = drag.vx + dx; view.y = drag.vy + dy; applyView();
   } else {
@@ -325,9 +372,56 @@ svg.addEventListener('pointermove', (e) => {
   }
 });
 
+function linkOf(id) { return S.scene.links.find((x) => x.id === id); }
+
+// Live feedback while a link is dragged: nothing is sent to Rust until release,
+// so a whole drag is a single undo step.
+function previewLinkDrag(d, w) {
+  const l = linkOf(d.id);
+  if (!l) return;
+  world.querySelector('.lh-preview')?.remove();
+  world.querySelectorAll('.node-target').forEach((n) => n.classList.remove('node-target'));
+  const { start, end } = linkEnds(l);
+  const g = world.querySelector('.linkhandles');
+  if (d.which === 'bend') {
+    const b = bendFor(l, w);
+    const dx = l.cb.x - l.ca.x, dy = l.cb.y - l.ca.y, nx = -dy, ny = dx; // bend is a fraction of length
+    const c1 = { x: l.ca.x + dx * 0.25 + nx * b, y: l.ca.y + dy * 0.25 + ny * b };
+    const c2 = { x: l.ca.x + dx * 0.75 + nx * b, y: l.ca.y + dy * 0.75 + ny * b };
+    el('path', { class: 'lh-preview', fill: 'none',
+      d: `M${start.x} ${start.y} C${c1.x} ${c1.y} ${c2.x} ${c2.y} ${end.x} ${end.y}` }, world);
+    const h = g?.querySelector('[data-lh="bend"]');
+    if (h) { h.setAttribute('cx', w.x); h.setAttribute('cy', w.y); }
+  } else {
+    const fixed = d.which === 'from' ? end : start;
+    el('path', { class: 'lh-preview', fill: 'none', d: `M${fixed.x} ${fixed.y} L${w.x} ${w.y}` }, world);
+    const h = g?.querySelector(`[data-lh="${d.which}"]`);
+    if (h) { h.setAttribute('cx', w.x); h.setAttribute('cy', w.y); }
+    const t = nodeAt(w, d.which === 'from' ? l.to : l.from);
+    if (t) world.querySelector(`g[data-id="${t.id}"]`)?.classList.add('node-target');
+  }
+}
+
+async function finishLinkDrag(d, w) {
+  world.querySelector('.lh-preview')?.remove();
+  const l = linkOf(d.id);
+  if (!d.moved || !l) return;
+  if (d.which === 'bend') {
+    await act('set_link', { id: d.id, bend: bendFor(l, w) });
+    return;
+  }
+  const t = nodeAt(w, d.which === 'from' ? l.to : l.from);
+  if (!t) { render(); toast('Drop the end of the link on a node', true); return; }
+  const next = d.which === 'from' ? { from: t.id, to: l.to } : { from: l.from, to: t.id };
+  if (next.from === l.from && next.to === l.to) { render(); return; }
+  const st = await act('set_link', { id: d.id, ...next });
+  if (!st) render(); // refused: put the handle back
+}
+
 svg.addEventListener('pointerup', async (e) => {
   const d = drag; drag = null;
   svg.classList.remove('panning');
+  if (d && d.kind === 'link') { await finishLinkDrag(d, toWorld(e.clientX, e.clientY)); return; }
   if (!d || d.kind !== 'node' || !d.moved) return;
   if (d.id === S.root) { render(); return; }
   const dx = (e.clientX - d.sx) / view.k, dy = (e.clientY - d.sy) / view.k;

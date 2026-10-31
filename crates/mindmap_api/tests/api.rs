@@ -193,3 +193,21 @@ fn bad_link_commands_are_errors_and_leave_no_history() {
         .unwrap()
         .is_empty());
 }
+
+#[test]
+fn set_link_bends_and_reconnects() {
+    let mut s = Session::new("Root");
+    let a = s.invoke("add_child", &json!({"parent": 1, "text": "A"})).unwrap()["new_id"].as_u64().unwrap_or(2);
+    let b = s.invoke("add_child", &json!({"parent": 1, "text": "B"})).unwrap()["new_id"].as_u64().unwrap_or(3);
+    let c = s.invoke("add_child", &json!({"parent": 1, "text": "C"})).unwrap()["new_id"].as_u64().unwrap_or(4);
+    let l = s.invoke("add_link", &json!({"from": a, "to": b})).unwrap()["new_link"].as_u64().unwrap();
+    let st = s.invoke("set_link", &json!({"id": l, "bend": -0.6})).unwrap();
+    assert!((st["scene"]["links"][0]["bend"].as_f64().unwrap() + 0.6).abs() < 1e-6);
+    let st = s.invoke("set_link", &json!({"id": l, "from": a, "to": c})).unwrap();
+    assert_eq!(st["scene"]["links"][0]["to"].as_u64().unwrap(), c);
+    assert!(s.invoke("set_link", &json!({"id": l, "from": a, "to": a})).is_err());
+    assert!(s.invoke("set_link", &json!({"id": l, "from": a})).is_err(), "both ends are required");
+    s.invoke("undo", &json!({})).unwrap();
+    let st = s.invoke("state", &json!({})).unwrap();
+    assert_eq!(st["scene"]["links"][0]["to"].as_u64().unwrap(), b);
+}

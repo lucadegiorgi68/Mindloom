@@ -43,7 +43,7 @@ duplicate, delete.
 | Central idea marker frame, organic tapered branches, underline labels | done |
 | Add child and sibling, inline edit, drag, re-parent, collapse, undo and redo | done |
 | Colour per main branch, shapes (text, box, cloud, marker), bold, italic, size | done |
-| Links between nodes: solid or dashed, arrow at none, end, start or both ends, colour, follow nodes, SVG export | done |
+| Links between nodes: solid or dashed, arrow at none, end, start or both ends, colour, follow nodes, drag to bend, drag ends to reattach, SVG export | done |
 | Per node font choice (7 bundled fonts), shape picker with cloud, bubble, box, marker | done |
 | Dark mode, auto layout, clean up, fit view, pan and zoom | done |
 | Save and open (.mindloom), export SVG, Markdown, OPML, import OPML | done |

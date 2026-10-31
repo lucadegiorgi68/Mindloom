@@ -356,6 +356,40 @@ impl MindMap {
         Some(id)
     }
 
+    /// Bows the link by `bend` (fraction of its length), clamped to a sane range.
+    pub fn set_link_bend(&mut self, id: u64, bend: f32) -> bool {
+        match self.links.iter_mut().find(|l| l.id == id) {
+            Some(l) if bend.is_finite() => {
+                l.bend = bend.clamp(-1.5, 1.5);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Moves the ends of a link. Refuses a self link, unknown nodes and a
+    /// link that would duplicate another one in the same direction.
+    pub fn reconnect_link(&mut self, id: u64, from: NodeId, to: NodeId) -> bool {
+        if from == to
+            || !self.nodes.contains_key(&from)
+            || !self.nodes.contains_key(&to)
+            || self
+                .links
+                .iter()
+                .any(|l| l.id != id && l.from == from && l.to == to)
+        {
+            return false;
+        }
+        match self.links.iter_mut().find(|l| l.id == id) {
+            Some(l) => {
+                l.from = from;
+                l.to = to;
+                true
+            }
+            None => false,
+        }
+    }
+
     pub fn delete_link(&mut self, id: u64) -> bool {
         let before = self.links.len();
         self.links.retain(|l| l.id != id);

@@ -195,6 +195,24 @@ impl Session {
                     Some(_) => return Err("colour must look like #rrggbb".into()),
                     None => None,
                 };
+                let bend = a.get("bend").and_then(Value::as_f64).map(|b| b as f32);
+                let ends = match (a.get("from"), a.get("to")) {
+                    (None, None) => None,
+                    _ => Some((id(a, "from")?, id(a, "to")?)),
+                };
+                if let Some((f, t)) = ends {
+                    self.doc
+                        .edit(|m| m.reconnect_link(i, f, t).then_some(()))
+                        .ok_or("cannot move the link there (same node, or already linked that way)")?;
+                }
+                if let Some(b) = bend {
+                    self.doc
+                        .edit(|m| m.set_link_bend(i, b).then_some(()))
+                        .ok_or("no such link")?;
+                }
+                if style.is_none() && arrow.is_none() && color.is_none() {
+                    return Ok(self.state());
+                }
                 self.doc
                     .edit(|m| {
                         let l = m.links.iter_mut().find(|l| l.id == i)?;

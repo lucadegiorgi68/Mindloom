@@ -16,6 +16,9 @@ line, arrowheads (none, end, start, both) and a colour; `Delete` removes it.
 Links follow their nodes, survive folding, and are exported to SVG and saved in
 `.mindloom` files.
 
+With a link selected, drag the dot on its curve to bend it (or drag the curve itself), and drag either end dot onto another node to reattach it. Each drag is one undo step.
+
+
 ## Fonts
 
 Seven open licensed fonts are bundled in `ui/fonts` (SIL Open Font License, see
