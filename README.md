@@ -76,8 +76,8 @@ re-parents it. Wheel zooms, dragging the background pans.
 
 ## Pictures
 
-A picture can be a node of the tree (toolbar "Image node", key I, or paste, or drop a file on a node) or
-sit on the canvas on its own (toolbar "Free image", key Shift+I, or drop a file on empty canvas). A node
+A picture can be a node of the tree (toolbar "Image node", key I, or drop a file on a node) or
+sit on the canvas on its own (toolbar "Free image", key Shift+I, or drop a file on empty canvas). Pasting an image from the clipboard asks which of the two you want (N node, F free image, Esc cancel). A node
 can also take a picture on top of its text with the "Image" button of the format bar, and the text then
 becomes the caption. Drag a corner dot, or use the Size slider, to resize; the proportions are kept.
 PNG, JPEG, GIF, WebP and SVG are accepted. Big bitmaps are scaled down to 1600 px on the longest side.

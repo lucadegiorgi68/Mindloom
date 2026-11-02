@@ -341,15 +341,34 @@ $('f-image').onclick = async () => {
   if (f && sel !== null) addImage(f, 'attach', { id: sel });
 };
 
-// Paste an image: under the selected node, or free on the canvas.
+// Paste an image: ask whether it becomes a node or a free picture. The
+// target node is fixed at paste time, so a click elsewhere cannot change it.
+let pendingPaste = null; // { file, parent }
+function askPasteMode(file) {
+  pendingPaste = { file, parent: sel ?? S.root };
+  const n = nodeById(pendingPaste.parent);
+  $('pc-node').textContent = n && n.text.trim() ? `Node under "${n.text.trim().split('\n')[0].slice(0, 24)}"` : 'Node';
+  $('pastechoice').hidden = false;
+  $('pc-node').focus();
+}
+function closePaste(mode) {
+  const p = pendingPaste;
+  pendingPaste = null;
+  $('pastechoice').hidden = true;
+  if (!p || !mode) return;
+  if (mode === 'node') addImage(p.file, 'node', { parent: p.parent });
+  else { const c = viewCentre(); addImage(p.file, 'free', { x: c.x, y: c.y }); }
+}
+$('pc-node').onclick = () => closePaste('node');
+$('pc-free').onclick = () => closePaste('free');
+$('pc-cancel').onclick = () => closePaste(null);
 addEventListener('paste', (e) => {
   if (editing) return;
   const item = [...(e.clipboardData?.items || [])].find((i) => i.kind === 'file' && i.type.startsWith('image/'));
   const f = item && item.getAsFile();
   if (!f) return;
   e.preventDefault();
-  if (sel !== null) addImage(f, 'node', { parent: sel });
-  else { const c = viewCentre(); addImage(f, 'free', { x: c.x, y: c.y }); }
+  askPasteMode(f);
 });
 // Drop an image file: onto a node it becomes a child node, elsewhere a free picture.
 addEventListener('dragover', (e) => {
@@ -526,6 +545,7 @@ let drag = null;
 let lastDown = { id: -1, t: 0 };
 
 svg.addEventListener('pointerdown', (e) => {
+  if (pendingPaste) closePaste(null);
   if (editing) { commitEdit(); }
   const plus = e.target.closest('[data-plus]');
   if (plus) { e.stopPropagation(); addChild(Number(plus.getAttribute('data-plus'))); return; }
@@ -923,6 +943,15 @@ $('b-dark').onclick = () => act('set_dark', { on: !S.scene.dark_mode });
 $('b-export').onchange = (e) => { const f = e.target.value; e.target.value = ''; if (f) doExport(f).catch((x) => toast(String(x))); };
 
 addEventListener('keydown', (e) => {
+  if (pendingPaste) {
+    const k = e.key.toLowerCase();
+    if (k === 'n') closePaste('node');
+    else if (k === 'f') closePaste('free');
+    else if (k === 'escape') closePaste(null);
+    else if (k !== 'enter' && k !== 'tab') return; // Enter and Tab act on the focused button
+    if (k !== 'tab' && k !== 'enter') e.preventDefault();
+    return;
+  }
   if (editing) return;
   const mod = e.ctrlKey || e.metaKey;
   if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); act(e.shiftKey ? 'redo' : 'undo'); }

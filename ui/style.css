@@ -98,3 +98,12 @@ body.dark .ih { fill: #1c1f26; }
   border-radius: 14px; box-shadow: var(--shadow); font-size: 13px; }
 #imagebar input[type=range] { width: 180px; accent-color: var(--accent); }
 #imagebar output { min-width: 54px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+#pastechoice { position: fixed; top: 38%; left: 50%; transform: translate(-50%, -50%); z-index: 10; padding: 14px 16px;
+  background: var(--bar); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); text-align: center; }
+#pastechoice .pc-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
+#pastechoice .pc-row { display: flex; gap: 6px; justify-content: center; }
+#pastechoice .pc-row button { border: 1px solid var(--line); padding: 7px 14px; }
+#pastechoice .pc-row button:focus-visible { outline: 2px solid var(--accent); }
+#pastechoice #pc-node { background: rgba(26, 140, 255, 0.15); color: var(--accent); }
+#pastechoice .pc-hint { margin-top: 8px; font-size: 11px; color: var(--muted); }

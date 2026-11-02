@@ -89,6 +89,16 @@
   <button id="i-remove" title="Remove the picture (Delete for a free picture)">Remove</button>
 </div>
 
+<div id="pastechoice" hidden role="dialog" aria-label="Paste image as">
+  <div class="pc-title">Paste image as</div>
+  <div class="pc-row">
+    <button id="pc-node" title="Add it as a node (N)">Node</button>
+    <button id="pc-free" title="Place it on the canvas on its own (F)">Free image</button>
+    <button id="pc-cancel" title="Cancel (Esc)">Cancel</button>
+  </div>
+  <div class="pc-hint">N node &nbsp; F free image &nbsp; Esc cancel</div>
+</div>
+
 <textarea id="editor" hidden rows="1" spellcheck="false"></textarea>
 <div id="toast" hidden></div>
 <input type="file" id="file-input" hidden>
