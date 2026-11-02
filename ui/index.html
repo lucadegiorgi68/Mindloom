@@ -26,6 +26,10 @@
     <button id="b-link" title="Link the selected node to another node (L)">Link</button>
   </div>
   <div class="group">
+    <button id="b-img-node" title="Add a picture as a new node under the selected one (I)">Image node</button>
+    <button id="b-img-free" title="Place a picture on the canvas on its own (Shift+I)">Free image</button>
+  </div>
+  <div class="group">
     <button id="b-clean" title="Remove manual moves, restore automatic layout">Clean up</button>
     <button id="b-fit" title="Fit map to window (Ctrl+0)">Fit</button>
     <button id="b-dark" title="Toggle dark mode">Dark</button>
@@ -55,6 +59,7 @@
     <button data-shape="Bubble" title="Speech bubble"><svg viewBox="0 0 28 20"><path d="M6 3 H22 A4 4 0 0 1 26 7 V10 A4 4 0 0 1 22 14 H11 L6 18 L7 14 H6 A4 4 0 0 1 2 10 V7 A4 4 0 0 1 6 3 Z"/></svg></button>
     <button data-shape="Marker" title="Marker frame"><svg viewBox="0 0 28 20"><path d="M4 5 C10 2 18 3 24 4 C27 8 26 13 24 16 C17 18 10 17 4 16 C2 12 3 8 5 5 C8 3 12 4 15 4" stroke-width="3"/></svg></button>
   </div>
+  <button id="f-image" title="Put a picture in this node">Image</button>
   <button id="f-bold" title="Bold"><b>B</b></button>
   <button id="f-italic" title="Italic"><i>I</i></button>
   <button id="f-smaller" title="Smaller text">A-</button>
@@ -76,10 +81,19 @@
   <button id="link-delete" title="Delete this link (Delete)">Delete link</button>
 </div>
 
+<div id="imagebar" hidden>
+  <label for="i-size">Size</label>
+  <input type="range" id="i-size" min="24" max="1200" step="1" title="Picture width">
+  <output id="i-size-val"></output>
+  <button id="i-replace" title="Choose another picture for this node">Replace</button>
+  <button id="i-remove" title="Remove the picture (Delete for a free picture)">Remove</button>
+</div>
+
 <textarea id="editor" hidden rows="1" spellcheck="false"></textarea>
 <div id="toast" hidden></div>
 <input type="file" id="file-input" hidden>
-<div id="help">Tab: add branch &nbsp; Enter: sibling &nbsp; C: second central idea &nbsp; F2 or double click: edit &nbsp; Drag: move &nbsp; Shift+drop on a node: re-parent &nbsp; L: link two nodes &nbsp; Wheel: zoom &nbsp; Drag background: pan &nbsp; Select a link: drag its dot to bend, drag an end onto another node to reattach</div>
+<input type="file" id="img-input" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" hidden>
+<div id="help">Tab: add branch &nbsp; Enter: sibling &nbsp; C: second central idea &nbsp; F2 or double click: edit &nbsp; Drag: move &nbsp; Shift+drop on a node: re-parent &nbsp; L: link two nodes &nbsp; I: picture node &nbsp; Shift+I: free picture, or paste or drop an image &nbsp; Drag a corner dot to resize a picture &nbsp; Wheel: zoom &nbsp; Drag background: pan &nbsp; Select a link: drag its dot to bend, drag an end onto another node to reattach</div>
 <script src="app.js"></script>
 </body>
 </html>

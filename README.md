@@ -69,10 +69,20 @@ tauri build
 
 ## Shortcuts
 
-Tab add branch, Enter add sibling, C add a second central idea, F2 or double click edit, Delete remove,
+Tab add branch, Enter add sibling, C add a second central idea, F2 or double click edit, Delete remove, I add a picture as a node under the selected one, Shift+I place a free picture,
 Space fold, Ctrl or Cmd Z / Y undo and redo, S save, O open, N new, 0 fit.
 Drag a node to move it with its subtree. Shift plus drop on another node
 re-parents it. Wheel zooms, dragging the background pans.
+
+## Pictures
+
+A picture can be a node of the tree (toolbar "Image node", key I, or paste, or drop a file on a node) or
+sit on the canvas on its own (toolbar "Free image", key Shift+I, or drop a file on empty canvas). A node
+can also take a picture on top of its text with the "Image" button of the format bar, and the text then
+becomes the caption. Drag a corner dot, or use the Size slider, to resize; the proportions are kept.
+PNG, JPEG, GIF, WebP and SVG are accepted. Big bitmaps are scaled down to 1600 px on the longest side.
+Pictures are stored once inside the `.mindloom` file (identical ones are shared, unused ones are dropped
+on save) and are embedded in the SVG export.
 
 ## Known limits
 

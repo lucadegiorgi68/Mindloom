@@ -1,7 +1,7 @@
 //! A Scene is everything the renderer needs, already laid out and shaped.
 //! The frontend (or the SVG exporter) only draws it.
 use crate::geom::{Pt, Rect};
-use crate::layout::layout;
+use crate::layout::{image_pad, layout};
 use crate::links::link_geometry;
 use crate::model::{BranchStyle, LinkArrow, LinkStyle, MindMap, NodeId, Shape, Side, LINK_GREY};
 use crate::organic;
@@ -32,6 +32,28 @@ pub struct SceneNode {
     pub central: bool,
     /// Which side of its central idea the node hangs on.
     pub side: Side,
+    /// The picture this node shows, with the rectangle it fills (absolute).
+    #[serde(default)]
+    pub image: Option<SceneImage>,
+}
+
+/// A picture ready to draw. The bytes are fetched separately by asset id, so
+/// they do not travel with every scene.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SceneImage {
+    pub asset: u64,
+    /// Fingerprint of the picture, for caching.
+    pub key: u64,
+    pub rect: Rect,
+}
+
+/// A picture placed on the canvas on its own.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SceneFreeImage {
+    pub id: u64,
+    pub asset: u64,
+    pub key: u64,
+    pub rect: Rect,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -73,6 +95,9 @@ pub struct Scene {
     pub nodes: Vec<SceneNode>,
     pub branches: Vec<SceneBranch>,
     pub links: Vec<SceneLink>,
+    /// Free pictures, drawn behind the nodes.
+    #[serde(default)]
+    pub images: Vec<SceneFreeImage>,
     pub bounds: Rect,
     pub dark_mode: bool,
 }
@@ -102,6 +127,21 @@ pub fn build_scene(map: &MindMap) -> Scene {
         let r = rects[&id];
         let color = map.color_of(id);
         let seed = id.wrapping_mul(0x2545_F491_4F6C_DD1D);
+        let framed_node = n.shape != Shape::None;
+        let image = map.node_image_size(id).map(|(iw, ih)| {
+            let pad = image_pad(framed_node);
+            let asset = n.image.as_ref().map_or(0, |i| i.asset);
+            SceneImage {
+                asset,
+                key: map.assets.get(&asset).map_or(0, |a| a.key),
+                rect: Rect {
+                    cx: r.cx,
+                    cy: r.top() + pad + ih / 2.0,
+                    w: iw,
+                    h: ih,
+                },
+            }
+        });
         nodes.push(SceneNode {
             id,
             text: n.text.clone(),
@@ -120,7 +160,10 @@ pub fn build_scene(map: &MindMap) -> Scene {
             } else {
                 String::new()
             },
-            text_baseline: if n.shape == Shape::None {
+            text_baseline: if image.is_some() {
+                // The text is a caption under the picture.
+                r.bottom() - image_pad(framed_node) - n.font_size * 0.3
+            } else if n.shape == Shape::None {
                 r.bottom() - 12.0
             } else {
                 let extra = (n.text.lines().count().max(1) as f32 - 1.0) * n.font_size * 1.25 / 2.0;
@@ -133,6 +176,7 @@ pub fn build_scene(map: &MindMap) -> Scene {
             },
             central: n.parent.is_none(),
             side: n.side,
+            image,
         });
         if n.collapsed {
             return;
@@ -144,7 +188,7 @@ pub fn build_scene(map: &MindMap) -> Scene {
             let depth = map.depth(*c);
             // The branch leaves the parent's tip. Unframed labels sit on an
             // underline that continues the branch; framed ones stop at the frame.
-            let parent_framed = n.shape != Shape::None;
+            let parent_framed = n.shape != Shape::None || map.node_image_size(id).is_some();
             let a = if n.parent.is_none() || parent_framed {
                 Pt::new(
                     if dir > 0.0 { r.right() } else { r.left() } - dir * 4.0,
@@ -156,7 +200,8 @@ pub fn build_scene(map: &MindMap) -> Scene {
                     r.bottom() - 2.0,
                 )
             };
-            let framed = cn.shape != Shape::None;
+            // A picture node is joined at the side, like a framed one.
+            let framed = cn.shape != Shape::None || map.node_image_size(*c).is_some();
             let near_x = if dir > 0.0 { cr.left() } else { cr.right() };
             let (b, tail) = if framed {
                 (Pt::new(near_x + dir * 2.0, cr.cy), 0.0)
@@ -194,6 +239,22 @@ pub fn build_scene(map: &MindMap) -> Scene {
     }
 
     let links = build_links(map, &rects);
+    let images: Vec<SceneFreeImage> = map
+        .free_images
+        .iter()
+        .filter(|f| map.assets.contains_key(&f.asset))
+        .map(|f| SceneFreeImage {
+            id: f.id,
+            asset: f.asset,
+            key: map.assets[&f.asset].key,
+            rect: Rect {
+                cx: f.x,
+                cy: f.y,
+                w: f.width,
+                h: map.image_height(f.asset, f.width),
+            },
+        })
+        .collect();
 
     let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
     let link_pts = links.iter().flat_map(|l| {
@@ -215,6 +276,12 @@ pub fn build_scene(map: &MindMap) -> Scene {
         x1 = x1.max(n.rect.right());
         y1 = y1.max(n.rect.bottom());
     }
+    for f in &images {
+        x0 = x0.min(f.rect.left());
+        y0 = y0.min(f.rect.top());
+        x1 = x1.max(f.rect.right());
+        y1 = y1.max(f.rect.bottom());
+    }
     let bounds = Rect {
         cx: (x0 + x1) / 2.0,
         cy: (y0 + y1) / 2.0,
@@ -225,6 +292,7 @@ pub fn build_scene(map: &MindMap) -> Scene {
         nodes,
         branches,
         links,
+        images,
         bounds,
         dark_mode: map.dark_mode,
     }

@@ -1,7 +1,8 @@
 //! Import and export for Mindloom maps.
 mod fontdata;
-use mindmap_core::{build_scene, scene::Scene, BranchStyle, LinkStyle, MindMap, Shape};
+use mindmap_core::{build_scene, scene::Scene, BranchStyle, ImageAsset, LinkStyle, MindMap, Shape};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fmt::Write;
 
 pub const FILE_VERSION: u32 = 1;
@@ -14,10 +15,14 @@ struct FileEnvelope {
 }
 
 pub fn to_json(map: &MindMap) -> String {
+    // Pictures nothing shows any more are left out of the file. Cloning is
+    // cheap: the picture bytes are shared, not copied.
+    let mut map = map.clone();
+    map.prune_assets();
     serde_json::to_string_pretty(&FileEnvelope {
         format: "mindloom".into(),
         version: FILE_VERSION,
-        map: map.clone(),
+        map,
     })
     .expect("map serialises")
 }
@@ -33,7 +38,9 @@ pub fn from_json(s: &str) -> Result<MindMap, String> {
             env.version
         ));
     }
-    Ok(env.map)
+    let mut map = env.map;
+    map.ensure_asset_keys();
+    Ok(map)
 }
 
 fn esc(s: &str) -> String {
@@ -62,10 +69,27 @@ fn path_d(pts: &[mindmap_core::Pt], ox: f32, oy: f32, close: bool) -> String {
 
 /// Self contained SVG of the whole map.
 pub fn to_svg(map: &MindMap) -> String {
-    scene_to_svg(&build_scene(map))
+    scene_to_svg_with(&build_scene(map), &map.assets)
 }
 
+/// Like `scene_to_svg_with`, for a scene whose pictures are not at hand: they
+/// are left out.
 pub fn scene_to_svg(scene: &Scene) -> String {
+    scene_to_svg_with(scene, &BTreeMap::new())
+}
+
+/// One embedded picture, as an SVG element. Empty if the asset is unknown.
+fn image_tag(assets: &BTreeMap<u64, ImageAsset>, asset: u64, r: &mindmap_core::Rect) -> String {
+    match assets.get(&asset) {
+        Some(a) => format!(
+            "<image href=\"data:{};base64,{}\" x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" preserveAspectRatio=\"none\"/>",
+            a.mime, a.data, r.left(), r.top(), r.w, r.h
+        ),
+        None => String::new(),
+    }
+}
+
+pub fn scene_to_svg_with(scene: &Scene, assets: &BTreeMap<u64, ImageAsset>) -> String {
     let pad = 60.0;
     let b = scene.bounds;
     let (bg, fg) = if scene.dark_mode {
@@ -104,6 +128,9 @@ pub fn scene_to_svg(scene: &Scene) -> String {
                 );
             }
         }
+    }
+    for f in &scene.images {
+        s.push_str(&image_tag(assets, f.asset, &f.rect));
     }
     for l in &scene.links {
         let dash = if l.style == LinkStyle::Dashed {
@@ -161,6 +188,9 @@ pub fn scene_to_svg(scene: &Scene) -> String {
                 }
             }
             Shape::None => {}
+        }
+        if let Some(img) = &n.image {
+            s.push_str(&image_tag(assets, img.asset, &img.rect));
         }
         let lines: Vec<&str> = n.text.lines().collect();
         for (i, line) in lines.iter().enumerate() {
@@ -221,10 +251,15 @@ fn font_faces(scene: &Scene) -> String {
 pub fn to_markdown(map: &MindMap) -> String {
     let mut out = String::new();
     map.visit_depth_first(|n, d| {
-        if d == 0 {
-            let _ = writeln!(out, "# {}\n", n.text.replace('\n', " "));
+        let label = if n.text.is_empty() && n.image.is_some() {
+            "(image)".to_string()
         } else {
-            let _ = writeln!(out, "{}* {}", "  ".repeat(d - 1), n.text.replace('\n', " "));
+            n.text.replace('\n', " ")
+        };
+        if d == 0 {
+            let _ = writeln!(out, "# {label}\n");
+        } else {
+            let _ = writeln!(out, "{}* {label}", "  ".repeat(d - 1));
         }
     });
     out

@@ -509,7 +509,10 @@ fn reconnecting_a_link_validates_its_new_ends() {
     let l2 = m.add_link(a, c).unwrap();
     assert!(!m.reconnect_link(l1, a, a), "self link");
     assert!(!m.reconnect_link(l1, a, 999), "unknown node");
-    assert!(!m.reconnect_link(l1, a, c), "would duplicate the other link");
+    assert!(
+        !m.reconnect_link(l1, a, c),
+        "would duplicate the other link"
+    );
     assert!(m.reconnect_link(l1, a, b), "keeping its own ends is fine");
     assert!(m.reconnect_link(l1, b, c));
     assert_eq!((m.links[0].from, m.links[0].to), (b, c));
@@ -528,7 +531,10 @@ fn scene_link_exposes_handle_geometry() {
     let (mx, my) = ((l.ca.x + l.cb.x) / 2.0, (l.ca.y + l.cb.y) / 2.0);
     let off = ((l.mid.x - mx).powi(2) + (l.mid.y - my).powi(2)).sqrt();
     let dist = ((l.cb.x - l.ca.x).powi(2) + (l.cb.y - l.ca.y).powi(2)).sqrt();
-    assert!((off / dist - 0.75 * 0.5).abs() < 0.05, "midpoint sits 0.75 * bend away");
+    assert!(
+        (off / dist - 0.75 * 0.5).abs() < 0.05,
+        "midpoint sits 0.75 * bend away"
+    );
 }
 
 #[test]
@@ -591,7 +597,10 @@ fn central_ideas_never_overlap_and_dragging_one_leaves_the_rest() {
     let second = in_tree(c);
     let first_bottom = first.iter().map(|r| r.bottom()).fold(f32::MIN, f32::max);
     let second_top = second.iter().map(|r| r.top()).fold(f32::MAX, f32::min);
-    assert!(second_top > first_bottom, "second tree sits below the first");
+    assert!(
+        second_top > first_bottom,
+        "second tree sits below the first"
+    );
     assert_eq!(rects[&1].cx, 0.0);
     assert_eq!(rects[&1].cy, 0.0);
     // Dragging the second central idea moves its tree and nothing else.
@@ -628,4 +637,151 @@ fn old_files_without_extra_roots_still_load() {
     v.as_object_mut().unwrap().remove("extra_roots");
     let m: MindMap = serde_json::from_value(v).unwrap();
     assert_eq!(m.roots(), vec![1]);
+}
+
+// ---------- Images ----------
+
+fn with_image() -> (MindMap, u64) {
+    let mut m = sample();
+    // A 200 x 100 picture, so the aspect ratio is 2:1.
+    let asset = m.add_asset("image/png", "AAAA", 200, 100).unwrap();
+    (m, asset)
+}
+
+#[test]
+fn assets_reject_bad_input_and_reuse_identical_pictures() {
+    let mut m = sample();
+    assert!(m.add_asset("text/html", "AAAA", 10, 10).is_none());
+    assert!(m.add_asset("image/png", "", 10, 10).is_none());
+    assert!(m.add_asset("image/png", "AAAA", 0, 10).is_none());
+    let a = m.add_asset("image/png", "AAAA", 10, 10).unwrap();
+    assert_eq!(m.add_asset("image/png", "AAAA", 10, 10), Some(a));
+    assert_ne!(m.add_asset("image/png", "BBBB", 10, 10), Some(a));
+    assert_eq!(m.assets.len(), 2);
+}
+
+#[test]
+fn image_node_is_a_child_with_aspect_ratio_size() {
+    let (mut m, asset) = with_image();
+    let id = m.add_image_child(1, asset, Some(160.0)).unwrap();
+    assert_eq!(m.nodes[&id].parent, Some(1));
+    assert!(m.nodes[&1].children.contains(&id));
+    assert_eq!(m.node_image_size(id), Some((160.0, 80.0)));
+    // Without a width it starts at its natural width, capped.
+    let id2 = m.add_image_child(1, asset, None).unwrap();
+    assert_eq!(m.node_image_size(id2), Some((200.0, 100.0)));
+    assert!(m.add_image_child(1, 999, None).is_none());
+}
+
+#[test]
+fn image_width_is_clamped_and_keeps_aspect() {
+    let (mut m, asset) = with_image();
+    let id = m.add_image_child(1, asset, Some(100.0)).unwrap();
+    assert!(m.set_node_image_width(id, 1.0));
+    assert_eq!(m.node_image_size(id).unwrap().0, model::IMAGE_MIN_WIDTH);
+    assert!(m.set_node_image_width(id, 99999.0));
+    assert_eq!(m.node_image_size(id).unwrap().0, model::IMAGE_MAX_WIDTH);
+    assert!(!m.set_node_image_width(id, f32::NAN));
+    assert!(!m.set_node_image_width(1, 100.0)); // the root has no picture
+    let (w, h) = m.node_image_size(id).unwrap();
+    assert!((h - w / 2.0).abs() < 0.01);
+}
+
+#[test]
+fn picture_can_be_attached_to_and_removed_from_a_node() {
+    let (mut m, asset) = with_image();
+    let a = m.nodes[&1].children[0];
+    assert!(m.set_node_image(a, asset, Some(120.0)));
+    assert_eq!(m.nodes[&a].text, "A", "the text stays as a caption");
+    assert!(m.remove_node_image(a));
+    assert!(m.nodes[&a].image.is_none());
+    assert!(!m.remove_node_image(a));
+}
+
+#[test]
+fn image_node_layout_makes_room_for_the_picture_and_caption() {
+    let (mut m, asset) = with_image();
+    let id = m.add_image_child(1, asset, Some(200.0)).unwrap();
+    let plain = layout::layout(&m)[&id];
+    assert!(plain.w >= 200.0 && plain.h >= 100.0);
+    m.set_text(id, "Caption");
+    let captioned = layout::layout(&m)[&id];
+    assert!(captioned.h > plain.h, "a caption adds height");
+    m.set_node_image_width(id, 400.0);
+    assert!(layout::layout(&m)[&id].w >= 400.0);
+}
+
+#[test]
+fn scene_places_the_picture_inside_the_node_rect() {
+    let (mut m, asset) = with_image();
+    let id = m.add_image_child(1, asset, Some(200.0)).unwrap();
+    m.set_text(id, "Cap");
+    let scene = build_scene(&m);
+    let n = scene.nodes.iter().find(|n| n.id == id).unwrap();
+    let img = n.image.as_ref().expect("scene carries the picture");
+    assert_eq!(img.asset, asset);
+    assert_eq!((img.rect.w, img.rect.h), (200.0, 100.0));
+    assert!(img.rect.top() >= n.rect.top() && img.rect.bottom() <= n.rect.bottom());
+    assert!(
+        n.text_baseline > img.rect.bottom(),
+        "the caption sits below the picture"
+    );
+    // The branch joins the picture node at its side, not on an underline.
+    let br = scene.branches.iter().find(|b| b.to == id).unwrap();
+    let end = br.centerline.last().unwrap();
+    assert!((end.y - n.rect.cy).abs() < 1.0, "joined at mid height");
+}
+
+#[test]
+fn free_images_live_outside_the_tree() {
+    let (mut m, asset) = with_image();
+    let nodes_before = m.nodes.len();
+    let f = m.add_free_image(asset, 500.0, -300.0, Some(150.0)).unwrap();
+    assert_eq!(m.nodes.len(), nodes_before, "no node is created");
+    let scene = build_scene(&m);
+    let img = scene.images.iter().find(|i| i.id == f).unwrap();
+    assert_eq!((img.rect.cx, img.rect.cy), (500.0, -300.0));
+    assert_eq!((img.rect.w, img.rect.h), (150.0, 75.0));
+    assert!(
+        scene.bounds.right() >= 575.0,
+        "bounds include free pictures"
+    );
+    assert!(m.move_free_image(f, 10.0, 20.0));
+    assert_eq!((m.free_images[0].x, m.free_images[0].y), (510.0, -280.0));
+    assert!(m.set_free_image_width(f, 300.0, Some((0.0, 0.0))));
+    assert_eq!(
+        (
+            m.free_images[0].width,
+            m.free_images[0].x,
+            m.free_images[0].y
+        ),
+        (300.0, 0.0, 0.0)
+    );
+    assert!(m.delete_free_image(f));
+    assert!(!m.delete_free_image(f));
+    assert!(m.add_free_image(asset, f32::NAN, 0.0, None).is_none());
+}
+
+#[test]
+fn unused_pictures_are_pruned_but_used_ones_stay() {
+    let (mut m, asset) = with_image();
+    let other = m.add_asset("image/png", "BBBB", 10, 10).unwrap();
+    m.add_free_image(asset, 0.0, 0.0, None).unwrap();
+    m.prune_assets();
+    assert!(m.assets.contains_key(&asset));
+    assert!(!m.assets.contains_key(&other));
+}
+
+#[test]
+fn maps_saved_before_images_existed_still_load() {
+    let json = serde_json::to_value(sample()).unwrap();
+    let mut v = json.clone();
+    v.as_object_mut().unwrap().remove("assets");
+    v.as_object_mut().unwrap().remove("free_images");
+    for n in v["nodes"].as_object_mut().unwrap().values_mut() {
+        n.as_object_mut().unwrap().remove("image");
+    }
+    let m: MindMap = serde_json::from_value(v).unwrap();
+    assert!(m.assets.is_empty() && m.free_images.is_empty());
+    assert!(m.nodes.values().all(|n| n.image.is_none()));
 }

@@ -11,5 +11,8 @@ pub mod scene;
 
 pub use geom::{Pt, Rect};
 pub use history::Document;
-pub use model::{BranchStyle, Link, LinkArrow, LinkStyle, MindMap, Node, NodeId, Shape, Side};
+pub use model::{
+    BranchStyle, FreeImage, ImageAsset, Link, LinkArrow, LinkStyle, MindMap, Node, NodeId,
+    NodeImage, Shape, Side,
+};
 pub use scene::{build_scene, Scene};

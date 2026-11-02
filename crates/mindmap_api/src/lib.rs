@@ -24,6 +24,19 @@ fn text<'a>(args: &'a Value, key: &str) -> Result<&'a str, String> {
         .ok_or_else(|| format!("missing '{key}'"))
 }
 
+/// Largest picture accepted, as base64 text (about 9 MB of image data).
+const MAX_IMAGE_B64: usize = 12_000_000;
+
+fn is_base64(s: &str) -> bool {
+    s.len() & 3 == 0
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'+' || b == b'/' || b == b'=')
+}
+
+fn num(args: &Value, key: &str) -> Option<f32> {
+    args.get(key).and_then(Value::as_f64).map(|v| v as f32)
+}
+
 impl Session {
     pub fn new(title: &str) -> Self {
         Self {
@@ -43,6 +56,7 @@ impl Session {
                 "id": n.id, "bold": n.bold, "italic": n.italic,
                 "font_size": n.font_size, "shape": n.shape,
                 "font": mindmap_core::fonts::resolve(&n.font).name,
+                "image_width": n.image.as_ref().map(|i| i.width),
             })).collect::<Vec<_>>(),
             "fonts": mindmap_core::fonts::FONTS.iter().map(|f| json!({
                 "name": f.name, "stack": f.stack,
@@ -213,7 +227,9 @@ impl Session {
                 if let Some((f, t)) = ends {
                     self.doc
                         .edit(|m| m.reconnect_link(i, f, t).then_some(()))
-                        .ok_or("cannot move the link there (same node, or already linked that way)")?;
+                        .ok_or(
+                            "cannot move the link there (same node, or already linked that way)",
+                        )?;
                 }
                 if let Some(b) = bend {
                     self.doc
@@ -238,6 +254,93 @@ impl Session {
                         Some(())
                     })
                     .ok_or("no such link")?;
+            }
+            "add_image" => {
+                // mode "node": new child of `parent` showing the picture.
+                // mode "attach": give existing node `id` the picture.
+                // mode "free": place it on the canvas at (x, y).
+                let mime = text(a, "mime")?.to_string();
+                let data = text(a, "data")?.to_string();
+                if data.len() > MAX_IMAGE_B64 {
+                    return Err("image is too large (limit about 9 MB)".into());
+                }
+                if !is_base64(&data) {
+                    return Err("image data is not valid base64".into());
+                }
+                let pw = a.get("pixel_width").and_then(Value::as_u64).unwrap_or(0) as u32;
+                let ph = a.get("pixel_height").and_then(Value::as_u64).unwrap_or(0) as u32;
+                let width = num(a, "width");
+                let mode = text(a, "mode")?.to_string();
+                let (px, py) = (num(a, "x").unwrap_or(0.0), num(a, "y").unwrap_or(0.0));
+                let target = a
+                    .get("id")
+                    .or_else(|| a.get("parent"))
+                    .and_then(Value::as_u64);
+                let new = self
+                    .doc
+                    .edit(|m| {
+                        let asset = m.add_asset(&mime, &data, pw, ph)?;
+                        match mode.as_str() {
+                            "node" => m
+                                .add_image_child(target.unwrap_or(m.root), asset, width)
+                                .map(|n| ("new_id", n)),
+                            "attach" => m
+                                .set_node_image(target?, asset, width)
+                                .then(|| ("new_id", target.unwrap())),
+                            "free" => m
+                                .add_free_image(asset, px, py, width)
+                                .map(|f| ("new_free", f)),
+                            _ => None,
+                        }
+                    })
+                    .ok_or("cannot add this image (unknown format, empty, or no such node)")?;
+                let mut st = self.state();
+                st[new.0] = json!(new.1);
+                return Ok(st);
+            }
+            "remove_node_image" => {
+                let i = id(a, "id")?;
+                self.doc
+                    .edit(|m| m.remove_node_image(i).then_some(()))
+                    .ok_or("this node has no image")?;
+            }
+            "set_image_width" => {
+                let i = id(a, "id")?;
+                let w = num(a, "width").ok_or("missing 'width'")?;
+                let centre = num(a, "x").zip(num(a, "y"));
+                let free = match a.get("kind").and_then(Value::as_str) {
+                    Some("free") => true,
+                    Some("node") => false,
+                    _ => return Err("kind must be 'node' or 'free'".into()),
+                };
+                self.doc
+                    .edit(|m| {
+                        if free {
+                            m.set_free_image_width(i, w, centre)
+                        } else {
+                            m.set_node_image_width(i, w)
+                        }
+                        .then_some(())
+                    })
+                    .ok_or("no such image")?;
+            }
+            "move_free_image" => {
+                let i = id(a, "id")?;
+                let (dx, dy) = (num(a, "dx").unwrap_or(0.0), num(a, "dy").unwrap_or(0.0));
+                self.doc
+                    .edit(|m| m.move_free_image(i, dx, dy).then_some(()))
+                    .ok_or("no such image")?;
+            }
+            "delete_free_image" => {
+                let i = id(a, "id")?;
+                self.doc
+                    .edit(|m| m.delete_free_image(i).then_some(()))
+                    .ok_or("no such image")?;
+            }
+            "get_asset" => {
+                let i = id(a, "id")?;
+                let asset = self.doc.map.assets.get(&i).ok_or("no such asset")?;
+                return Ok(json!({ "mime": asset.mime, "data": &*asset.data }));
             }
             "toggle_collapse" => {
                 let i = id(a, "id")?;

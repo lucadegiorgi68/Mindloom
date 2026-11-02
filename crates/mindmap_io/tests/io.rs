@@ -129,8 +129,42 @@ fn opml_roundtrip_keeps_extra_central_ideas_and_plain_outlines_stay_branches() {
     assert_eq!(to_markdown(&back), to_markdown(&m));
     // Unmarked extra top level outlines (ordinary outliner files) still
     // become branches of the first central idea.
-    let plain = "<opml version=\"2.0\"><body><outline text=\"One\"/><outline text=\"Two\"/></body></opml>";
+    let plain =
+        "<opml version=\"2.0\"><body><outline text=\"One\"/><outline text=\"Two\"/></body></opml>";
     let m2 = from_opml(plain).unwrap();
     assert_eq!(m2.roots().len(), 1);
     assert_eq!(m2.nodes[&m2.root].children.len(), 1);
+}
+
+#[test]
+fn svg_embeds_pictures_and_json_prunes_unused_ones() {
+    let mut m = sample();
+    let used = m.add_asset("image/png", "AAAA", 100, 50).unwrap();
+    let unused = m.add_asset("image/png", "ZZZZ", 100, 50).unwrap();
+    m.add_image_child(1, used, Some(120.0)).unwrap();
+    m.add_free_image(used, 400.0, 0.0, Some(80.0)).unwrap();
+    let svg = to_svg(&m);
+    assert_eq!(
+        svg.matches("<image ").count(),
+        2,
+        "one per node picture and free picture"
+    );
+    assert!(svg.contains("href=\"data:image/png;base64,AAAA\""));
+    assert!(!svg.contains("ZZZZ"));
+    let back = from_json(&to_json(&m)).unwrap();
+    assert!(back.assets.contains_key(&used));
+    assert!(
+        !back.assets.contains_key(&unused),
+        "unused pictures are not saved"
+    );
+    assert_eq!(back.free_images.len(), 1);
+    assert!(m.assets.contains_key(&unused), "the open map is untouched");
+}
+
+#[test]
+fn markdown_names_picture_only_nodes() {
+    let mut m = sample();
+    let a = m.add_asset("image/png", "AAAA", 10, 10).unwrap();
+    m.add_image_child(1, a, None).unwrap();
+    assert!(to_markdown(&m).contains("* (image)"));
 }

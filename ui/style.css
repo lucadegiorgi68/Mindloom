@@ -85,3 +85,16 @@ button.on { background: rgba(26, 140, 255, 0.2); color: var(--accent); }
 .lh-preview { stroke: var(--accent); stroke-width: 3; stroke-dasharray: 6 5; stroke-linecap: round; pointer-events: none; }
 .node-target .hit { fill: var(--accent); fill-opacity: 0.15; }
 body.dark .lh:not(.lh-bend) { fill: #1c1f26; }
+
+/* Pictures: free images, node images, the size bar and the resize handles. */
+.fimg { cursor: move; }
+.imgph { fill: rgba(128, 128, 128, 0.15); stroke: var(--muted); stroke-dasharray: 4 3; pointer-events: all; }
+.ih { fill: #fff; stroke: var(--accent); stroke-width: 2.5; pointer-events: all; }
+.ih.nwse { cursor: nwse-resize; }
+.ih.nesw { cursor: nesw-resize; }
+body.dark .ih { fill: #1c1f26; }
+#imagebar { position: fixed; bottom: 46px; left: 50%; transform: translateX(-50%); z-index: 5; display: flex;
+  gap: 8px; align-items: center; padding: 6px 10px; background: var(--bar); border: 1px solid var(--line);
+  border-radius: 14px; box-shadow: var(--shadow); font-size: 13px; }
+#imagebar input[type=range] { width: 180px; accent-color: var(--accent); }
+#imagebar output { min-width: 54px; color: var(--muted); font-variant-numeric: tabular-nums; }

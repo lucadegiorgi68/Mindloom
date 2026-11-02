@@ -14,6 +14,7 @@ let editing = null;      // { id, fresh }
 let busy = false;
 let selLink = null;      // selected link id
 let linkMode = false;    // waiting for the second node of a new link
+let selFree = null;      // selected free image id
 
 // ---------- Rust bridge ----------
 async function call(cmd, args = {}) {
@@ -76,6 +77,7 @@ function render() {
   setupFonts(S.fonts);
   if (sel !== null && !nodeById(sel)) sel = null;
   if (selLink !== null && !S.scene.links.some((l) => l.id === selLink)) selLink = null;
+  if (selFree !== null && !S.scene.images.some((i) => i.id === selFree)) selFree = null;
   world.replaceChildren();
   const bg = el('g', {}, world);
   for (const b of S.scene.branches) {
@@ -87,12 +89,15 @@ function render() {
         'stroke-linejoin': 'round' }, bg);
     }
   }
+  drawFreeImages();
   drawLinks();
   for (const n of S.scene.nodes) drawNode(n);
   drawSelection();
+  drawImageHandles();
   drawLinkHandles();
   updateFormatBar();
   updateLinkBar();
+  updateImageBar();
 }
 
 function drawNode(n) {
@@ -109,6 +114,12 @@ function drawNode(n) {
   } else if ((n.shape === 'Cloud' || n.shape === 'Bubble') && n.shape_path) {
     el('path', { transform: `translate(${r.cx} ${r.cy})`, d: n.shape_path, fill: 'none', stroke: n.color,
       'stroke-width': 3, 'pointer-events': 'none' }, g);
+  }
+  if (n.image) {
+    const i = n.image.rect, href = assetHref(n.image.asset, n.image.key);
+    const box = { x: i.cx - i.w / 2, y: i.cy - i.h / 2, width: i.w, height: i.h, 'pointer-events': 'none' };
+    if (href) el('image', { ...box, href, preserveAspectRatio: 'none', 'data-nimg': n.id }, g);
+    else el('rect', { ...box, class: 'imgph', 'data-nimg': n.id }, g);
   }
   if (editing && editing.id === n.id) return; // the editor overlay shows the text
   const lines = n.text.split('\n');
@@ -145,6 +156,213 @@ function drawSelection() {
     t.textContent = '+';
   }
 }
+
+// ---------- Images ----------
+// Pictures are stored once in Rust. The scene only names them, so the bytes
+// are fetched on first use and kept here, keyed by fingerprint (an id can be
+// handed out again after an undo, the fingerprint cannot).
+const pictures = new Map(); // key -> data URL
+const loadingPictures = new Set();
+function assetHref(asset, key) {
+  const hit = pictures.get(key);
+  if (hit) return hit;
+  if (!loadingPictures.has(key)) {
+    loadingPictures.add(key);
+    call('get_asset', { id: asset }).then((r) => {
+      pictures.set(key, `data:${r.mime};base64,${r.data}`);
+      loadingPictures.delete(key);
+      if (S) render();
+    }).catch(() => loadingPictures.delete(key));
+  }
+  return null;
+}
+
+function drawFreeImages() {
+  for (const f of S.scene.images) {
+    const r = f.rect, href = assetHref(f.asset, f.key);
+    const box = { x: r.cx - r.w / 2, y: r.cy - r.h / 2, width: r.w, height: r.h, 'data-fid': f.id, 'data-fimg': f.id };
+    if (href) el('image', { ...box, href, preserveAspectRatio: 'none', class: 'fimg' }, world);
+    else el('rect', { ...box, class: 'imgph fimg' }, world);
+  }
+}
+
+// The picture that is selected, either a free one or the one inside the selected node.
+function imageBox() {
+  if (selFree !== null) {
+    const f = S.scene.images.find((i) => i.id === selFree);
+    return f ? { kind: 'free', id: f.id, rect: f.rect } : null;
+  }
+  const n = sel === null ? null : nodeById(sel);
+  return n && n.image ? { kind: 'node', id: n.id, rect: n.image.rect } : null;
+}
+
+const CORNERS = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+function drawImageHandles() {
+  const b = imageBox();
+  if (!b || editing) return;
+  const r = b.rect;
+  if (b.kind === 'free') {
+    el('rect', { class: 'sel fsel', x: r.cx - r.w / 2 - 3, y: r.cy - r.h / 2 - 3, width: r.w + 6, height: r.h + 6 }, world);
+  }
+  for (const [a, c] of CORNERS) {
+    el('circle', { class: 'ih ' + (a * c > 0 ? 'nwse' : 'nesw'), cx: r.cx + a * r.w / 2, cy: r.cy + c * r.h / 2,
+      r: 7, 'data-ih': `${a},${c}` }, world);
+  }
+}
+
+// Shows a picture at another width without asking Rust: used while a handle
+// or the slider is moving. The change is sent once, when it is released.
+function previewImageWidth(b, width) {
+  const r = b.rect, h = width * r.h / r.w;
+  const img = world.querySelector(b.kind === 'free' ? `[data-fimg="${b.id}"]` : `[data-nimg="${b.id}"]`);
+  if (img) {
+    img.setAttribute('x', r.cx - width / 2); img.setAttribute('y', r.cy - h / 2);
+    img.setAttribute('width', width); img.setAttribute('height', h);
+  }
+  for (const hd of world.querySelectorAll('.ih')) {
+    const [a, c] = hd.getAttribute('data-ih').split(',').map(Number);
+    hd.setAttribute('cx', r.cx + a * width / 2); hd.setAttribute('cy', r.cy + c * h / 2);
+  }
+  const fs = world.querySelector('.fsel');
+  if (fs) {
+    fs.setAttribute('x', r.cx - width / 2 - 3); fs.setAttribute('y', r.cy - h / 2 - 3);
+    fs.setAttribute('width', width + 6); fs.setAttribute('height', h + 6);
+  }
+}
+const clampWidth = (w) => Math.max(24, Math.min(2400, w));
+
+function updateImageBar() {
+  const b = imageBox(), bar = $('imagebar');
+  bar.hidden = !b || !!editing;
+  if (bar.hidden) return;
+  bar.style.bottom = $('formatbar').hidden ? '46px' : '98px';
+  const w = Math.round(b.rect.w);
+  $('i-size').value = w;
+  $('i-size-val').textContent = w + ' px';
+  $('i-replace').hidden = b.kind === 'free';
+  $('i-remove').textContent = b.kind === 'free' ? 'Delete' : 'Remove';
+}
+
+$('i-size').oninput = (e) => {
+  const b = imageBox();
+  if (!b) return;
+  const w = Number(e.target.value);
+  $('i-size-val').textContent = w + ' px';
+  previewImageWidth(b, w);
+};
+$('i-size').onchange = (e) => {
+  const b = imageBox();
+  if (b) act('set_image_width', { kind: b.kind, id: b.id, width: Number(e.target.value) });
+};
+$('i-replace').onclick = async () => {
+  const f = await pickImage();
+  if (f && sel !== null) addImage(f, 'attach', { id: sel });
+};
+$('i-remove').onclick = () => {
+  const b = imageBox();
+  if (!b) return;
+  if (b.kind === 'free') act('delete_free_image', { id: b.id });
+  else act('remove_node_image', { id: b.id });
+};
+
+const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml'];
+const loadImageEl = (url) => new Promise((res, rej) => {
+  const i = new Image();
+  i.onload = () => res(i);
+  i.onerror = () => rej(new Error('Could not read this image'));
+  i.src = url;
+});
+const blobToBase64 = (blob) => new Promise((res, rej) => {
+  const r = new FileReader();
+  r.onload = () => res(String(r.result).split(',')[1]);
+  r.onerror = () => rej(new Error('Could not read this image'));
+  r.readAsDataURL(blob);
+});
+
+// Reads a file into { mime, data (base64), w, h }. Big pictures are scaled
+// down first (longest side 1600 px) so maps and save files stay light.
+async function readImage(file) {
+  if (!IMAGE_TYPES.includes(file.type)) throw new Error('Use a PNG, JPEG, GIF, WebP or SVG image');
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await loadImageEl(url);
+    let w = img.naturalWidth || 300, h = img.naturalHeight || 200;
+    let blob = file, mime = file.type;
+    const MAXSIDE = 1600;
+    if (mime !== 'image/svg+xml' && (Math.max(w, h) > MAXSIDE || file.size > 2.5e6)) {
+      const k = Math.min(1, MAXSIDE / Math.max(w, h));
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      mime = mime === 'image/jpeg' ? 'image/jpeg' : 'image/png';
+      blob = await new Promise((r) => c.toBlob(r, mime, 0.9));
+      if (!blob) throw new Error('Could not process this image');
+      w = c.width; h = c.height;
+    }
+    if (blob.size > 8e6) throw new Error('This image is too large (8 MB at most)');
+    return { mime, data: await blobToBase64(blob), w, h };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function pickImage() {
+  return new Promise((resolve) => {
+    const inp = $('img-input');
+    inp.value = '';
+    inp.onchange = () => resolve(inp.files[0] || null);
+    inp.click();
+  });
+}
+
+// mode "node": new child of opts.parent. "attach": into node opts.id.
+// "free": on the canvas at opts.x, opts.y.
+async function addImage(file, mode, opts = {}) {
+  let img;
+  try { img = await readImage(file); } catch (e) { toast(String(e.message || e)); return; }
+  const st = await act('add_image', { mode, mime: img.mime, data: img.data, pixel_width: img.w, pixel_height: img.h, ...opts });
+  if (!st) return;
+  selLink = null;
+  if (mode === 'free') { selFree = st.new_free; sel = null; render(); return; }
+  selFree = null; sel = st.new_id; render(); ensureVisible(st.new_id);
+}
+const viewCentre = () => toWorld(innerWidth / 2, innerHeight / 2);
+
+$('b-img-node').onclick = async () => {
+  const f = await pickImage();
+  if (f) addImage(f, 'node', { parent: sel ?? S.root });
+};
+$('b-img-free').onclick = async () => {
+  const f = await pickImage();
+  if (f) { const c = viewCentre(); addImage(f, 'free', { x: c.x, y: c.y }); }
+};
+$('f-image').onclick = async () => {
+  const f = await pickImage();
+  if (f && sel !== null) addImage(f, 'attach', { id: sel });
+};
+
+// Paste an image: under the selected node, or free on the canvas.
+addEventListener('paste', (e) => {
+  if (editing) return;
+  const item = [...(e.clipboardData?.items || [])].find((i) => i.kind === 'file' && i.type.startsWith('image/'));
+  const f = item && item.getAsFile();
+  if (!f) return;
+  e.preventDefault();
+  if (sel !== null) addImage(f, 'node', { parent: sel });
+  else { const c = viewCentre(); addImage(f, 'free', { x: c.x, y: c.y }); }
+});
+// Drop an image file: onto a node it becomes a child node, elsewhere a free picture.
+addEventListener('dragover', (e) => {
+  if ([...(e.dataTransfer?.types || [])].includes('Files')) e.preventDefault();
+});
+addEventListener('drop', (e) => {
+  const f = [...(e.dataTransfer?.files || [])].find((x) => x.type.startsWith('image/'));
+  if (!f) return;
+  e.preventDefault();
+  const w = toWorld(e.clientX, e.clientY), t = nodeAt(w, null);
+  if (t) addImage(f, 'node', { parent: t.id });
+  else addImage(f, 'free', { x: w.x, y: w.y });
+});
 
 // ---------- Fonts ----------
 // The catalogue lives in Rust. Here it only becomes @font-face rules and the
@@ -318,6 +536,13 @@ svg.addEventListener('pointerdown', (e) => {
     if (hit) finishLink(Number(hit.getAttribute('data-id'))); else setLinkMode(false);
     return;
   }
+  const ih = e.target.closest('[data-ih]');
+  const b = ih && imageBox();
+  if (b) {
+    const corner = ih.getAttribute('data-ih').split(',').map(Number);
+    drag = { kind: 'resize', b, corner, width: b.rect.w, moved: false, sx: e.clientX, sy: e.clientY };
+    return;
+  }
   const lh = e.target.closest('[data-lh]');
   if (lh && selLink !== null) {
     drag = { kind: 'link', which: lh.getAttribute('data-lh'), id: selLink, moved: false, sx: e.clientX, sy: e.clientY };
@@ -330,6 +555,15 @@ svg.addEventListener('pointerdown', (e) => {
     return;
   }
   selLink = null;
+  const fhit = e.target.closest('[data-fid]');
+  if (!hit && fhit) {
+    // A free picture: select it, and dragging from here moves it.
+    const id = Number(fhit.getAttribute('data-fid'));
+    sel = null; selFree = id; render();
+    drag = { kind: 'free', id, sx: e.clientX, sy: e.clientY, moved: false };
+    return;
+  }
+  selFree = null;
   if (hit) {
     const id = Number(hit.getAttribute('data-id'));
     // Double click is detected by hand: redrawing on pointerdown detaches the
@@ -358,6 +592,25 @@ svg.addEventListener('pointermove', (e) => {
   if (drag.kind === 'link') {
     if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
     if (drag.moved) previewLinkDrag(drag, toWorld(e.clientX, e.clientY));
+    return;
+  }
+  if (drag.kind === 'resize') {
+    if (Math.abs(dx) + Math.abs(dy) > 2) drag.moved = true;
+    if (!drag.moved) return;
+    // Project the pointer on the diagonal through the dragged corner, so the
+    // picture keeps its proportions and the dot stays under the pointer.
+    const r = drag.b.rect, w = toWorld(e.clientX, e.clientY), half = Math.hypot(r.w, r.h) / 2;
+    const t = ((w.x - r.cx) * drag.corner[0] * r.w / 2 + (w.y - r.cy) * drag.corner[1] * r.h / 2) / half;
+    drag.width = clampWidth(r.w * t / half);
+    previewImageWidth(drag.b, drag.width);
+    return;
+  }
+  if (drag.kind === 'free') {
+    if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
+    if (drag.moved) {
+      world.querySelectorAll('.ih, .fsel').forEach((n) => n.remove());
+      world.querySelector(`[data-fimg="${drag.id}"]`)?.setAttribute('transform', `translate(${dx / view.k} ${dy / view.k})`);
+    }
     return;
   }
   if (drag.kind === 'pan') {
@@ -421,6 +674,16 @@ svg.addEventListener('pointerup', async (e) => {
   const d = drag; drag = null;
   svg.classList.remove('panning');
   if (d && d.kind === 'link') { await finishLinkDrag(d, toWorld(e.clientX, e.clientY)); return; }
+  if (d && d.kind === 'resize') {
+    if (d.moved && Math.round(d.width) !== Math.round(d.b.rect.w)) {
+      await act('set_image_width', { kind: d.b.kind, id: d.b.id, width: d.width });
+    } else if (d.moved) render();
+    return;
+  }
+  if (d && d.kind === 'free') {
+    if (d.moved) await act('move_free_image', { id: d.id, dx: (e.clientX - d.sx) / view.k, dy: (e.clientY - d.sy) / view.k });
+    return;
+  }
   if (!d || d.kind !== 'node' || !d.moved) return;
   if (d.id === S.root) { render(); return; }
   const dx = (e.clientX - d.sx) / view.k, dy = (e.clientY - d.sy) / view.k;
@@ -478,7 +741,9 @@ function startEdit(id, fresh, keepValue = false) {
   const r = n.rect;
   if (!keepValue) editor.value = n.text;
   editor.hidden = false;
-  placeEditor(view.x + r.cx * view.k, view.y + r.cy * view.k, n.font_size, n.bold, n.italic, n.font_stack);
+  // A picture node has its text as a caption under the picture.
+  const ey = n.image ? n.text_baseline - n.font_size * 0.35 : r.cy;
+  placeEditor(view.x + r.cx * view.k, view.y + ey * view.k, n.font_size, n.bold, n.italic, n.font_stack);
   editor.focus();
   if (!keepValue && !wasPending) editor.select();
 }
@@ -646,7 +911,10 @@ $('b-redo').onclick = () => act('redo');
 $('b-child').onclick = () => addChild(sel ?? S.root);
 $('b-sibling').onclick = () => sel !== null && addSibling(sel);
 $('b-central').onclick = addCentralIdea;
-$('b-delete').onclick = () => sel !== null && act('delete', { id: sel });
+$('b-delete').onclick = () => {
+  if (selFree !== null) act('delete_free_image', { id: selFree });
+  else if (sel !== null) act('delete', { id: sel });
+};
 $('b-fold').onclick = () => sel !== null && act('toggle_collapse', { id: sel });
 $('b-link').onclick = startLink;
 $('b-clean').onclick = () => act('clean_up');
@@ -663,7 +931,9 @@ addEventListener('keydown', (e) => {
   else if (mod && e.key.toLowerCase() === 'o') { e.preventDefault(); doOpen(); }
   else if (mod && e.key.toLowerCase() === 'n') { e.preventDefault(); $('b-new').click(); }
   else if (mod && e.key === '0') { e.preventDefault(); fit(); }
-  else if (e.key === 'Escape') { if (linkMode) setLinkMode(false); else { sel = null; selLink = null; render(); } }
+  else if (e.key === 'Escape') { if (linkMode) setLinkMode(false); else { sel = null; selLink = null; selFree = null; render(); } }
+  else if (selFree !== null && (e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); act('delete_free_image', { id: selFree }); }
+  else if (!mod && !e.altKey && e.key.toLowerCase() === 'i') { e.preventDefault(); $(e.shiftKey ? 'b-img-free' : 'b-img-node').click(); }
   else if (selLink !== null && (e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); act('delete_link', { id: selLink }); }
   else if (!mod && !e.altKey && e.key.toLowerCase() === 'c') { e.preventDefault(); addCentralIdea(); }
   else if (sel === null) return;

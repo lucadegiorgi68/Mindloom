@@ -49,7 +49,8 @@ duplicate, delete.
 | Second and further central ideas: own tree, own colour, drag, link, delete, all exports | done |
 | Save and open (.mindloom), export SVG, Markdown, OPML, import OPML | done |
 | Branch styles beyond tapered, dotted, straight; control points | next |
-| Underline, alignment, images, notes, task check marks, branch labels | next |
+| Images: as a node (with optional caption) or free on the canvas, resize, paste, drop, save, SVG export | done |
+| Underline, alignment, notes, task check marks, branch labels | next |
 | Themes, branch thickness slider, shadows, background, auto focus | next |
 | PNG and PDF export, templates, folders | later |
 | Task board, whiteboard, AI ideas, collaboration | not planned for now |

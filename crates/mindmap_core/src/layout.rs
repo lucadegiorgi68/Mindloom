@@ -1,11 +1,29 @@
 use crate::geom::Rect;
-use crate::model::{MindMap, NodeId, Side};
+use crate::model::{MindMap, NodeId, Side, IMAGE_PAD_FRAMED, IMAGE_PAD_PLAIN};
 use std::collections::BTreeMap;
 
 const H_GAP: f32 = 70.0;
 const V_GAP: f32 = 14.0;
 /// Empty space between the trees of two central ideas.
 const TREE_GAP: f32 = 140.0;
+
+/// Room a caption needs under a picture: its lines plus a small gap.
+pub fn caption_height(text: &str, font_size: f32) -> f32 {
+    if text.is_empty() {
+        0.0
+    } else {
+        text.lines().count().max(1) as f32 * font_size * 1.3 + 6.0
+    }
+}
+
+/// Padding around the picture of an image node.
+pub fn image_pad(framed: bool) -> f32 {
+    if framed {
+        IMAGE_PAD_FRAMED
+    } else {
+        IMAGE_PAD_PLAIN
+    }
+}
 
 /// Rough text measurement. The frontend can replace this later with real
 /// font metrics through `layout_with`.
@@ -40,7 +58,23 @@ pub fn layout_with(map: &MindMap, measure: Measure) -> BTreeMap<NodeId, Rect> {
     let mut sizes = BTreeMap::new();
     for (id, n) in &map.nodes {
         let framed = n.shape != crate::model::Shape::None;
-        sizes.insert(*id, measure(&n.text, &n.font, n.font_size, framed));
+        let size = match map.node_image_size(*id) {
+            // A picture node is the picture with its text, if any, as a caption.
+            Some((iw, ih)) => {
+                let pad = image_pad(framed);
+                let tw = if n.text.is_empty() {
+                    0.0
+                } else {
+                    measure(&n.text, &n.font, n.font_size, false).0
+                };
+                (
+                    iw.max(tw) + pad * 2.0,
+                    ih + caption_height(&n.text, n.font_size) + pad * 2.0,
+                )
+            }
+            None => measure(&n.text, &n.font, n.font_size, framed),
+        };
+        sizes.insert(*id, size);
     }
     let mut out = BTreeMap::new();
     // Where the next central idea's tree may start: the bottom of the trees

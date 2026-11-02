@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 pub type NodeId = u64;
 
@@ -60,6 +61,66 @@ pub struct Link {
 
 pub const LINK_GREY: &str = "#8a93a3";
 
+/// Image formats the map accepts.
+pub const IMAGE_MIMES: [&str; 5] = [
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp",
+    "image/svg+xml",
+];
+/// Smallest and largest width an image can be given on the canvas.
+pub const IMAGE_MIN_WIDTH: f32 = 24.0;
+pub const IMAGE_MAX_WIDTH: f32 = 2400.0;
+/// Width a freshly added image starts with, at most.
+pub const IMAGE_DEFAULT_WIDTH: f32 = 240.0;
+/// Space around the picture inside an image node (framed or not).
+pub const IMAGE_PAD_FRAMED: f32 = 12.0;
+pub const IMAGE_PAD_PLAIN: f32 = 4.0;
+
+/// A picture stored once in the map and shared by whatever shows it.
+/// The bytes are base64 text, behind an `Arc` so undo snapshots stay cheap.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ImageAsset {
+    pub mime: String,
+    pub data: Arc<str>,
+    /// Natural size in pixels, used for the aspect ratio.
+    pub w: u32,
+    pub h: u32,
+    /// Fingerprint of the bytes. Ids can be handed out again after an undo,
+    /// so the frontend caches pictures by this, never by id alone.
+    #[serde(default)]
+    pub key: u64,
+}
+
+/// Fingerprint of picture data (FNV 1a, kept under 2^52 so JSON numbers hold it).
+pub fn image_key(mime: &str, data: &str) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in mime.bytes().chain(std::iter::once(0)).chain(data.bytes()) {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    h & ((1 << 52) - 1)
+}
+
+/// A picture that is the content of a node. Height follows from the width.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NodeImage {
+    pub asset: u64,
+    pub width: f32,
+}
+
+/// A picture that lives on the canvas on its own, outside the tree of branches.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FreeImage {
+    pub id: u64,
+    pub asset: u64,
+    /// Centre on the canvas.
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Node {
     pub id: NodeId,
@@ -81,6 +142,9 @@ pub struct Node {
     /// Font name from the catalogue in `fonts`. Older files lack it.
     #[serde(default = "default_font")]
     pub font: String,
+    /// Picture shown by this node, above its text. Older files lack it.
+    #[serde(default)]
+    pub image: Option<NodeImage>,
 }
 
 fn default_font() -> String {
@@ -105,6 +169,7 @@ impl Node {
             italic: false,
             font_size: 20.0,
             font: default_font(),
+            image: None,
         }
     }
 }
@@ -123,6 +188,16 @@ pub struct MindMap {
     /// first one (it names the map and cannot be deleted). Older files lack this.
     #[serde(default)]
     pub extra_roots: Vec<NodeId>,
+    /// Pictures used by nodes and free images, by id. Older files lack this.
+    #[serde(default)]
+    pub assets: BTreeMap<u64, ImageAsset>,
+    /// Pictures placed on the canvas on their own. Older files lack this.
+    #[serde(default)]
+    pub free_images: Vec<FreeImage>,
+}
+
+pub fn clamp_image_width(w: f32) -> f32 {
+    w.clamp(IMAGE_MIN_WIDTH, IMAGE_MAX_WIDTH)
 }
 
 pub const PALETTE: [&str; 8] = [
@@ -149,6 +224,8 @@ impl MindMap {
             auto_layout: true,
             links: vec![],
             extra_roots: vec![],
+            assets: BTreeMap::new(),
+            free_images: vec![],
         }
     }
 
@@ -432,6 +509,188 @@ impl MindMap {
         let before = self.links.len();
         self.links.retain(|l| l.id != id);
         self.links.len() != before
+    }
+
+    // ---------- Images ----------
+
+    /// Stores a picture and returns its asset id. An identical picture that is
+    /// already stored is reused. Refuses unknown formats, empty data and
+    /// zero sizes.
+    pub fn add_asset(&mut self, mime: &str, data: &str, w: u32, h: u32) -> Option<u64> {
+        if !IMAGE_MIMES.contains(&mime) || data.is_empty() || w == 0 || h == 0 {
+            return None;
+        }
+        if let Some((id, _)) = self
+            .assets
+            .iter()
+            .find(|(_, a)| a.mime == mime && &*a.data == data)
+        {
+            return Some(*id);
+        }
+        let id = self.assets.keys().max().copied().unwrap_or(0) + 1;
+        self.assets.insert(
+            id,
+            ImageAsset {
+                mime: mime.to_string(),
+                data: Arc::from(data),
+                w,
+                h,
+                key: image_key(mime, data),
+            },
+        );
+        Some(id)
+    }
+
+    /// Width to start a new picture with: its natural width, kept in range.
+    pub fn default_image_width(&self, asset: u64) -> f32 {
+        let natural = self
+            .assets
+            .get(&asset)
+            .map_or(IMAGE_DEFAULT_WIDTH, |a| a.w as f32);
+        natural.clamp(IMAGE_MIN_WIDTH, IMAGE_DEFAULT_WIDTH)
+    }
+
+    /// Height of a picture shown `width` wide, keeping its aspect ratio.
+    pub fn image_height(&self, asset: u64, width: f32) -> f32 {
+        match self.assets.get(&asset) {
+            Some(a) => width * a.h as f32 / a.w as f32,
+            None => width,
+        }
+    }
+
+    /// Size of the picture a node shows, if it has one that can be drawn.
+    pub fn node_image_size(&self, id: NodeId) -> Option<(f32, f32)> {
+        let img = self.nodes.get(&id)?.image.as_ref()?;
+        self.assets.get(&img.asset)?;
+        Some((img.width, self.image_height(img.asset, img.width)))
+    }
+
+    /// Gives an existing node a picture, replacing any it had.
+    pub fn set_node_image(&mut self, id: NodeId, asset: u64, width: Option<f32>) -> bool {
+        if !self.nodes.contains_key(&id) || !self.assets.contains_key(&asset) {
+            return false;
+        }
+        let width = clamp_image_width(width.unwrap_or_else(|| self.default_image_width(asset)));
+        self.nodes.get_mut(&id).unwrap().image = Some(NodeImage { asset, width });
+        true
+    }
+
+    /// Adds a child node whose content is a picture. It starts with no text.
+    pub fn add_image_child(
+        &mut self,
+        parent: NodeId,
+        asset: u64,
+        width: Option<f32>,
+    ) -> Option<NodeId> {
+        if !self.assets.contains_key(&asset) {
+            return None;
+        }
+        let id = self.add_child(parent, "")?;
+        self.set_node_image(id, asset, width);
+        Some(id)
+    }
+
+    pub fn remove_node_image(&mut self, id: NodeId) -> bool {
+        match self.nodes.get_mut(&id) {
+            Some(n) if n.image.is_some() => {
+                n.image = None;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Places a picture on the canvas on its own, centred on (x, y).
+    pub fn add_free_image(
+        &mut self,
+        asset: u64,
+        x: f32,
+        y: f32,
+        width: Option<f32>,
+    ) -> Option<u64> {
+        if !self.assets.contains_key(&asset) || !x.is_finite() || !y.is_finite() {
+            return None;
+        }
+        let width = clamp_image_width(width.unwrap_or_else(|| self.default_image_width(asset)));
+        let id = self.free_images.iter().map(|f| f.id).max().unwrap_or(0) + 1;
+        self.free_images.push(FreeImage {
+            id,
+            asset,
+            x,
+            y,
+            width,
+        });
+        Some(id)
+    }
+
+    pub fn move_free_image(&mut self, id: u64, dx: f32, dy: f32) -> bool {
+        match self.free_images.iter_mut().find(|f| f.id == id) {
+            Some(f) if dx.is_finite() && dy.is_finite() => {
+                f.x += dx;
+                f.y += dy;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub fn delete_free_image(&mut self, id: u64) -> bool {
+        let before = self.free_images.len();
+        self.free_images.retain(|f| f.id != id);
+        self.free_images.len() != before
+    }
+
+    /// Resizes a node picture, keeping its aspect ratio. Returns false if the
+    /// node has no picture or the width is not a number.
+    pub fn set_node_image_width(&mut self, id: NodeId, width: f32) -> bool {
+        match self.nodes.get_mut(&id).and_then(|n| n.image.as_mut()) {
+            Some(img) if width.is_finite() => {
+                img.width = clamp_image_width(width);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Resizes a free picture. `centre` optionally moves it in the same step.
+    pub fn set_free_image_width(
+        &mut self,
+        id: u64,
+        width: f32,
+        centre: Option<(f32, f32)>,
+    ) -> bool {
+        match self.free_images.iter_mut().find(|f| f.id == id) {
+            Some(f) if width.is_finite() => {
+                f.width = clamp_image_width(width);
+                if let Some((x, y)) = centre.filter(|(x, y)| x.is_finite() && y.is_finite()) {
+                    f.x = x;
+                    f.y = y;
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Fills in the fingerprint of pictures loaded from a file that lacks it.
+    pub fn ensure_asset_keys(&mut self) {
+        for a in self.assets.values_mut() {
+            if a.key == 0 {
+                a.key = image_key(&a.mime, &a.data);
+            }
+        }
+    }
+
+    /// Drops pictures nothing shows any more. Done when saving, never while
+    /// editing, so undo can always bring a deleted picture back.
+    pub fn prune_assets(&mut self) {
+        let used: std::collections::BTreeSet<u64> = self
+            .nodes
+            .values()
+            .filter_map(|n| n.image.as_ref().map(|i| i.asset))
+            .chain(self.free_images.iter().map(|f| f.asset))
+            .collect();
+        self.assets.retain(|id, _| used.contains(id));
     }
 
     /// Plain text outline, depth first, used by export and tests. Each central
